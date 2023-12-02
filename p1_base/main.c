@@ -2,13 +2,46 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-
+#include <fcntl.h>
+#include <dirent.h>
+#include <errno.h>
+#include <string.h>
 #include "constants.h"
 #include "operations.h"
 #include "parser.h"
 
+void errMsg(const char *format) {
+    perror(format);
+}
+
+void print_job_files() {
+  const char *dirpath = "jobs"; // Replace with your directory path
+    DIR *dirp;
+    struct dirent *dp;
+
+    dirp = opendir(dirpath);
+    if (dirp == NULL) {
+        errMsg("opendir failed on");
+    }
+
+    for (;;) {
+        errno = 0; /* To distinguish error from end-of-directory */
+        dp = readdir(dirp);
+        if (dp == NULL)
+            break;
+
+        // Check if the file name ends with ".jobs"
+        if (strlen(dp->d_name) >= 5 && strcmp(dp->d_name + strlen(dp->d_name) - 5, ".jobs") == 0) {
+            printf("%s\n", dp->d_name);
+        }
+    }
+
+    closedir(dirp);
+}
+
 int main(int argc, char *argv[]) {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
+  print_job_files();
 
   if (argc > 1) {
     char *endptr;

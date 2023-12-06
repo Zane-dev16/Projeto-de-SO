@@ -156,6 +156,7 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
   return 0;
 }
 
+// PASSAR A TER O FILEDESCRIPTOR COMO ARGUMENTO PARA SABER EM QUAL FICHEIRO.OUT É PARA ESCREVER
 int ems_show(unsigned int event_id) {
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
@@ -172,6 +173,7 @@ int ems_show(unsigned int event_id) {
   for (size_t i = 1; i <= event->rows; i++) {
     for (size_t j = 1; j <= event->cols; j++) {
       unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
+      // PASSAR PARA WRITE *************************************************************
       printf("%u", *seat);
 
       if (j < event->cols) {
@@ -185,6 +187,7 @@ int ems_show(unsigned int event_id) {
   return 0;
 }
 
+// PASSAR A TER O FILEDESCRIPTOR COMO ARGUMENTO PARA SABER EM QUAL FICHEIRO.OUT É PARA ESCREVER
 int ems_list_events() {
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
@@ -192,12 +195,14 @@ int ems_list_events() {
   }
 
   if (event_list->head == NULL) {
+    // PASSAR PARA WRITE *************************************************************
     printf("No events\n");
     return 0;
   }
 
   struct ListNode* current = event_list->head;
   while (current != NULL) {
+    // PASSAR PARA WRITE *************************************************************    
     printf("Event: ");
     printf("%u\n", (current->event)->id);
     current = current->next;

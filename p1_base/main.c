@@ -34,7 +34,6 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-
   const char *dirpath = "jobs";
   DIR *dirp;
   struct dirent *dp;
@@ -52,7 +51,6 @@ int main(int argc, char *argv[]) {
           break;
 
       // Check if the file name ends with ".jobs"
-
       if (!(strlen(dp->d_name) >= 5 && strcmp(dp->d_name + strlen(dp->d_name) - 5, ".jobs") == 0)) {
         continue;
       }
@@ -68,9 +66,6 @@ int main(int argc, char *argv[]) {
         unsigned int event_id, delay;
         size_t num_rows, num_columns, num_coords;
         size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
-
-        printf("> ");
-        fflush(stdout);
 
         switch (get_next(fd)) {
           case CMD_CREATE:
@@ -136,6 +131,7 @@ int main(int argc, char *argv[]) {
             break;
 
           case CMD_HELP:
+            // PASSAR PARA WRITE *************************************************************
             printf(
                 "Available commands:\n"
                 "  CREATE <event_id> <num_rows> <num_columns>\n"
@@ -155,7 +151,7 @@ int main(int argc, char *argv[]) {
           case EOC:
             end_of_file = 1;
             break;
-        }
+        } 
       }
   }
   ems_terminate();

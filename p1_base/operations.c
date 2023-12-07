@@ -190,24 +190,24 @@ int ems_show(unsigned int event_id, int fd) {
   return 0;
 }
 
-// PASSAR A TER O FILEDESCRIPTOR COMO ARGUMENTO PARA SABER EM QUAL FICHEIRO.OUT É PARA ESCREVER
-int ems_list_events() {
+int ems_list_events(int fd) {
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
     return 1;
   }
 
   if (event_list->head == NULL) {
-    // PASSAR PARA WRITE *************************************************************
-    printf("No events\n");
+    write(fd, "No events\n", strlen("No events\n"));
     return 0;
   }
 
   struct ListNode* current = event_list->head;
   while (current != NULL) {
-    // PASSAR PARA WRITE *************************************************************    
-    printf("Event: ");
-    printf("%u\n", (current->event)->id);
+    write(fd, "Event: ", strlen("Event: "));
+    char event_id_str[12];
+    snprintf(event_id_str, sizeof(event_id_str), "%u", (current->event)->id);
+    write(fd, event_id_str, strlen(event_id_str));
+    write(fd, "\n", strlen("\n"));
     current = current->next;
   }
 

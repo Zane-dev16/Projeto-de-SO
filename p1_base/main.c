@@ -17,6 +17,8 @@ void errMsg(const char *format) {
 int main(int argc, char *argv[]) {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
 
+  
+
   if (argc > 1) {
     char *endptr;
     unsigned long int delay = strtoul(argv[1], &endptr, 10);
@@ -136,19 +138,18 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Invalid command. See HELP for usage\n");
             break;
 
-          case CMD_HELP:
-            // PASSAR PARA WRITE *************************************************************
-            printf(
-                "Available commands:\n"
+          case CMD_HELP: {
+            char* commands = "Available commands:\n"
                 "  CREATE <event_id> <num_rows> <num_columns>\n"
                 "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
                 "  SHOW <event_id>\n"
                 "  LIST\n"
                 "  WAIT <delay_ms> [thread_id]\n"  // thread_id is not implemented
                 "  BARRIER\n"                      // Not implemented
-                "  HELP\n");
-
+                "  HELP\n";
+            write(output_fd, commands, strlen(commands));
             break;
+          }
 
           case CMD_BARRIER:  // Not implemented
           case CMD_EMPTY:

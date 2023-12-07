@@ -58,8 +58,14 @@ int main(int argc, char *argv[]) {
       char file_path[256];
       strcpy(file_path, "jobs/");
       strcat(file_path, dp->d_name);
+
+      char output_file_path[256];
+      strcpy(output_file_path, "jobs/");
+      strncat(output_file_path, dp->d_name, strlen(dp->d_name) - 5);
+      strcat(output_file_path, ".out");
+
       int fd = open(file_path, O_RDONLY);
-      printf("%s", dp->d_name);
+      int output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY , S_IRUSR | S_IWUSR);
 
       int end_of_file = 0;
       while (!end_of_file) {
@@ -100,7 +106,7 @@ int main(int argc, char *argv[]) {
               continue;
             }
 
-            if (ems_show(event_id)) {
+            if (ems_show(event_id, output_fd)) {
               fprintf(stderr, "Failed to show event\n");
             }
 

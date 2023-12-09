@@ -19,6 +19,7 @@ int main(int argc, char *argv[]) {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
   const char *dirpath = "jobs";
   DIR *dirp;
+  unsigned int max_proc = 0;
 
   if (argc > 1) {
     char *endptr;
@@ -38,6 +39,15 @@ int main(int argc, char *argv[]) {
       return 1;
     }
   }
+  if (argc > 3) {
+    char *endptr;
+    unsigned long int arg3 = strtoul(argv[3], &endptr, 10);
+
+    if (*endptr != '\0' || arg3 > UINT_MAX || arg3 == 0) {
+      fprintf(stderr, "Invalid max process value or value too large\n");
+      return 1;
+    }
+  }
 
   if (ems_init(state_access_delay_ms)) {
     fprintf(stderr, "Failed to initialize EMS\n");
@@ -47,6 +57,7 @@ int main(int argc, char *argv[]) {
   struct dirent *dp;
 
   pid_t pid = 1;
+  unsigned int num_proc = 0;
   while (1) {
       errno = 0; /* To distinguish error from end-of-directory */
       dp = readdir(dirp);
@@ -57,7 +68,15 @@ int main(int argc, char *argv[]) {
       if (!(strlen(dp->d_name) >= 5 && strcmp(dp->d_name + strlen(dp->d_name) - 5, ".jobs") == 0))
         continue;
 
+      if (num_proc == max_proc) {
+        wait(NULL);
+        printf("helo\n");
+        num_proc--;
+      } else if (num_proc > max_proc) {
+        errMsg("max_proc exceeded");
+      }
       if (pid != 0)
+        num_proc++;
         pid = fork();
       if (pid == -1)
         errMsg("Error creating fork");

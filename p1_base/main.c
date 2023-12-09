@@ -69,7 +69,6 @@ int main(int argc, char *argv[]) {
         continue;
 
       if (num_proc == max_proc) {
-        wait(NULL);
         printf("helo\n");
         num_proc--;
       } else if (num_proc > max_proc) {

@@ -33,11 +33,11 @@ int main(int argc, char *argv[]) {
   }
   if (argc > 2) {
     dirpath = argv[2];
-    dirp = opendir(dirpath);
-    if (dirp == NULL) {
-      errMsg("opendir failed on");
-      return 1;
-    }
+  }
+  dirp = opendir(dirpath);
+  if (dirp == NULL) {
+    errMsg("opendir failed");
+    return 1;
   }
   if (argc > 3) {
     char *endptr;

@@ -12,9 +12,7 @@
 #include "operations.h"
 #include "parser.h"
 
-void errMsg(const char *format) {
-    perror(format);
-}
+
 
 int main(int argc, char *argv[]) {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
@@ -36,7 +34,7 @@ int main(int argc, char *argv[]) {
     dirpath = argv[2];
     dirp = opendir(dirpath);
     if (dirp == NULL) {
-      errMsg("opendir failed");
+      fprintf(stderr, "Open dir failed\n");
       return 1;
     }
   }
@@ -57,31 +55,30 @@ int main(int argc, char *argv[]) {
   }
 
   struct dirent *dp;
-
   pid_t pid = 1;
   unsigned int num_proc = 0;
   while (1) {
-      errno = 0; /* To distinguish error from end-of-directory */
-      dp = readdir(dirp);
-      if (dp == NULL)
-          break;
-
-      // Check if the file name ends with ".jobs"
-      if (!(strlen(dp->d_name) >= 5 && strcmp(dp->d_name + strlen(dp->d_name) - 5, ".jobs") == 0))
-        continue;
-
-      if (num_proc == max_proc) {
-        wait(NULL);
-        num_proc--;
-      }
-      if (pid != 0) {
-        num_proc++;
-        pid = fork();
-      }
-      if (pid == -1)
-        errMsg("Error creating fork");
-      if (pid == 0)
+    errno = 0; /* To distinguish error from end-of-directory */
+    dp = readdir(dirp);
+    if (dp == NULL)
         break;
+
+    // Check if the file name ends with ".jobs"
+    if (!(strlen(dp->d_name) >= 5 && strcmp(dp->d_name + strlen(dp->d_name) - 5, ".jobs") == 0))
+      continue;
+
+    if (num_proc == max_proc) {
+      wait(NULL);
+      num_proc--;
+    }
+    if (pid != 0) {
+      num_proc++;
+      pid = fork();
+    }
+    if (pid == -1)
+      fprintf(stderr, "Error creating fork\n");
+    if (pid == 0)
+      break;
   }
 
   if (pid == 0) {

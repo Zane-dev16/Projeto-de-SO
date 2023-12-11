@@ -72,10 +72,7 @@ int main(int argc, char *argv[]) {
 
       if (num_proc == max_proc) {
         wait(NULL);
-        printf("helo\n");
         num_proc--;
-      } else if (num_proc > max_proc) {
-        errMsg("max_proc exceeded");
       }
       if (pid != 0) {
         num_proc++;
@@ -100,7 +97,7 @@ int main(int argc, char *argv[]) {
     strcat(output_file_path, "out");
 
     int fd = open(file_path, O_RDONLY);
-    int output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY , S_IRUSR | S_IWUSR);
+    int output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
     int end_of_file = 0;
     while (!end_of_file) {
@@ -193,12 +190,12 @@ int main(int argc, char *argv[]) {
           break;
       } 
     }
-    ems_terminate();
   }
   else {
     // Waiting for all the child processes to finish
     while (wait(NULL) > 0);
-    closedir(dirp);
   }
+  ems_terminate();
+  closedir(dirp);
   return 0;
 }

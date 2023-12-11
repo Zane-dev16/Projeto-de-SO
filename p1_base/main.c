@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
@@ -33,11 +34,11 @@ int main(int argc, char *argv[]) {
   }
   if (argc > 2) {
     dirpath = argv[2];
-  }
-  dirp = opendir(dirpath);
-  if (dirp == NULL) {
-    errMsg("opendir failed");
-    return 1;
+    dirp = opendir(dirpath);
+    if (dirp == NULL) {
+      errMsg("opendir failed");
+      return 1;
+    }
   }
   if (argc > 3) {
     char *endptr;
@@ -47,6 +48,7 @@ int main(int argc, char *argv[]) {
       fprintf(stderr, "Invalid max process value or value too large\n");
       return 1;
     }
+    max_proc = (unsigned int)arg3;
   }
 
   if (ems_init(state_access_delay_ms)) {
@@ -75,9 +77,10 @@ int main(int argc, char *argv[]) {
       } else if (num_proc > max_proc) {
         errMsg("max_proc exceeded");
       }
-      if (pid != 0)
+      if (pid != 0) {
         num_proc++;
         pid = fork();
+      }
       if (pid == -1)
         errMsg("Error creating fork");
       if (pid == 0)

@@ -16,6 +16,8 @@
 int  fd;
 int  output_fd;
 pthread_mutex_t mutex;
+pthread_rwlock_t rwl;
+pthread_mutex_t outputlock;
 
 void * process_line() {
       unsigned int event_id, delay;
@@ -48,9 +50,11 @@ void * process_line() {
           }
           pthread_mutex_unlock(&mutex);
 
+          pthread_rwlock_wrlock(&rwl);
           if (ems_reserve(event_id, num_coords, xs, ys)) {
             fprintf(stderr, "Failed to reserve seats\n");
           }
+          pthread_rwlock_unlock(&rwl);
 
           break;
 
@@ -62,17 +66,23 @@ void * process_line() {
           }
           pthread_mutex_unlock(&mutex);
 
+          pthread_rwlock_rdlock(&rwl);
+          pthread_mutex_lock(&outputlock);
           if (ems_show(event_id, output_fd)) {
             fprintf(stderr, "Failed to show event\n");
           }
+          pthread_mutex_unlock(&outputlock);
+          pthread_rwlock_unlock(&rwl);
 
           break;
 
         case CMD_LIST_EVENTS:
           pthread_mutex_unlock(&mutex);
+          pthread_mutex_lock(&outputlock);
           if (ems_list_events(output_fd)) {
             fprintf(stderr, "Failed to list events\n");
           }
+          pthread_mutex_unlock(&outputlock);
 
           break;
 
@@ -106,7 +116,11 @@ void * process_line() {
               "  WAIT <delay_ms> [thread_id]\n"  // thread_id is not implemented
               "  BARRIER\n"                      // Not implemented
               "  HELP\n";
+
+          pthread_mutex_lock(&outputlock);
           write(output_fd, commands, strlen(commands));
+          pthread_mutex_unlock(&outputlock);
+
           break;
         }
 
@@ -222,6 +236,8 @@ int main(int argc, char *argv[]) {
     output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
     pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&outputlock, NULL);
+    pthread_rwlock_init(&rwl, NULL);
     pthread_t th[max_thr];
     for (unsigned int i = 0; i < max_thr; i++) {
       if (pthread_create(&th[i], NULL, process_line, NULL) != 0) {
@@ -235,6 +251,8 @@ int main(int argc, char *argv[]) {
       }
     }
     pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&outputlock);
+    pthread_rwlock_destroy(&rwl);
     // while (!end_of_file) {}
   }
   else {

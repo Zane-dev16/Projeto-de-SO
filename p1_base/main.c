@@ -18,19 +18,27 @@ int  output_fd;
 pthread_mutex_t mutex;
 pthread_rwlock_t rwl;
 pthread_mutex_t outputlock;
+int barriered = 0;
 
 void * process_line() {
       unsigned int event_id, delay;
       size_t num_rows, num_columns, num_coords;
       size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
+      int *returnValue = malloc(sizeof(int));
+
 
       pthread_mutex_lock(&mutex);
+      if (barriered) {
+        *returnValue = 1;
+        return (void *)returnValue;
+      }
       switch (get_next(fd)) {
         case CMD_CREATE:
           if (parse_create(fd, &event_id, &num_rows, &num_columns) != 0) {
             fprintf(stderr, "Invalid command. See HELP for usage\n");
             // continue;
-            return (void*)0;
+            *returnValue = 0;
+            return (void *)returnValue;
           }
 
           if (ems_create(event_id, num_rows, num_columns)) {
@@ -46,7 +54,8 @@ void * process_line() {
           if (num_coords == 0) {
             fprintf(stderr, "Invalid command. See HELP for usage\n");
             //continue;
-            return (void*)0;
+            *returnValue = 0;
+            return (void *)returnValue;
           }
           pthread_mutex_unlock(&mutex);
 
@@ -62,7 +71,8 @@ void * process_line() {
           if (parse_show(fd, &event_id) != 0) {
             fprintf(stderr, "Invalid command. See HELP for usage\n");
             //continue;
-            return (void*)0;
+            *returnValue = 0;
+            return (void *)returnValue;
           }
           pthread_mutex_unlock(&mutex);
 
@@ -90,7 +100,8 @@ void * process_line() {
           if (parse_wait(fd, &delay, NULL) == -1) {  // thread_id is not implemented
             fprintf(stderr, "Invalid command. See HELP for usage\n");
             //continue;
-            return (void*)0;
+            *returnValue = 0;
+            return (void *)returnValue;
           }
           pthread_mutex_unlock(&mutex);
 
@@ -126,7 +137,9 @@ void * process_line() {
 
         case CMD_BARRIER:  // Not implemented
           pthread_mutex_unlock(&mutex);
-          return (void*)1;
+          barriered = 1;
+          *returnValue = 1;
+          return (void *)returnValue;
           break;
 
         case CMD_EMPTY:
@@ -135,10 +148,12 @@ void * process_line() {
 
         case EOC:
           pthread_mutex_unlock(&mutex);
-          return  (void*)2;
+          *returnValue = 2;
+          return (void *)returnValue;
           break;
       }
-    return 0;
+    *returnValue = 0;
+    return (void *)returnValue;
 }
 
 int main(int argc, char *argv[]) {
@@ -235,24 +250,32 @@ int main(int argc, char *argv[]) {
     fd = open(file_path, O_RDONLY);
     output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
-    pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&outputlock, NULL);
-    pthread_rwlock_init(&rwl, NULL);
-    pthread_t th[max_thr];
-    for (unsigned int i = 0; i < max_thr; i++) {
-      if (pthread_create(&th[i], NULL, process_line, NULL) != 0) {
-          fprintf(stderr, "Failed to create thread");
-          return 1;
+    int end_of_file = 0;
+    while (!end_of_file) {
+      pthread_mutex_init(&mutex, NULL);
+      pthread_mutex_init(&outputlock, NULL);
+      pthread_rwlock_init(&rwl, NULL);
+      pthread_t th[max_thr];
+      for (unsigned int i = 0; i < max_thr; i++) {
+        if (pthread_create(&th[i], NULL, process_line, NULL) != 0) {
+            fprintf(stderr, "Failed to create thread");
+            return 1;
+        }
       }
-    }
-    for (unsigned int i = 0; i < max_thr; i++) {
-      if (pthread_join(th[i], NULL) != 0) {
-          printf("End of File");
+      void * status = 0;
+      for (unsigned int i = 0; i < max_thr; i++) {
+        if (pthread_join(th[i], &status) != 0) {
+            printf("Error");
+        }
+        if (*((int *)status) == 2) {
+          end_of_file = 1;
+        }
       }
+      pthread_mutex_destroy(&mutex);
+      pthread_mutex_destroy(&outputlock);
+      pthread_rwlock_destroy(&rwl);
     }
-    pthread_mutex_destroy(&mutex);
-    pthread_mutex_destroy(&outputlock);
-    pthread_rwlock_destroy(&rwl);
+
     // while (!end_of_file) {}
   }
   else {

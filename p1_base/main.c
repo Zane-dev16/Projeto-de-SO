@@ -8,17 +8,175 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/wait.h>
+#include <pthread.h>
 #include "constants.h"
 #include "operations.h"
 #include "parser.h"
 
+int fd;
+int output_fd;
+pthread_mutex_t mutex;
+pthread_mutex_t outputlock;
+pthread_rwlock_t rwl;
 
+// global variable for barrier
+int terminate_reading;
+
+// global variable for wait
+int wait_id = -1;
+int wait_time;
+
+void * process_line(void* arg) {
+
+  int *returnValue = malloc(sizeof(int));
+  int thread_id = *(int*) arg;
+  free(arg);
+  while (1) {
+    unsigned int event_id, delay, thr_id;
+    size_t num_rows, num_columns, num_coords;
+    size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
+
+    pthread_mutex_lock(&mutex);
+    if (terminate_reading) {
+      pthread_mutex_unlock(&mutex);
+      *returnValue = 0;
+      return (void *)returnValue;
+    }
+    if (thread_id == wait_id) {
+      pthread_mutex_unlock(&mutex);
+      // printf("waiting now... thread: %d\n", thread_id);
+      ems_wait((unsigned int)wait_time);
+      pthread_mutex_lock(&mutex);
+    }
+    // printf("%d\n", thread_id);
+    switch (get_next(fd)) {
+      case CMD_CREATE:
+        if (parse_create(fd, &event_id, &num_rows, &num_columns) != 0) {
+          fprintf(stderr, "Invalid command. See HELP for usage\n");
+          // continue;
+          *returnValue = 0;
+          return (void *)returnValue;
+        }
+
+        if (ems_create(event_id, num_rows, num_columns)) {
+          fprintf(stderr, "Failed to create event\n");
+        }
+        pthread_mutex_unlock(&mutex);
+
+        break;
+
+      case CMD_RESERVE:
+        num_coords = parse_reserve(fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
+        pthread_mutex_unlock(&mutex);
+
+        if (num_coords == 0) {
+          fprintf(stderr, "Invalid command. See HELP for usage\n");
+          *returnValue = 0;
+          return (void *)returnValue;
+        }
+
+        pthread_rwlock_wrlock(&rwl);
+        if (ems_reserve(event_id, num_coords, xs, ys)) {
+          fprintf(stderr, "Failed to reserve seats\n");
+        }
+        pthread_rwlock_unlock(&rwl);
+        break;
+
+      case CMD_SHOW:
+        if (parse_show(fd, &event_id) != 0) {
+          fprintf(stderr, "Invalid command. See HELP for usage\n");
+          *returnValue = 0;
+          return (void *)returnValue;
+        }
+        pthread_mutex_unlock(&mutex);
+
+        pthread_rwlock_rdlock(&rwl);
+        pthread_mutex_lock(&outputlock);
+        if (ems_show(event_id, output_fd)) {
+          fprintf(stderr, "Failed to show event\n");
+        }
+        pthread_mutex_unlock(&outputlock);
+        pthread_rwlock_unlock(&rwl);
+
+        break;
+
+      case CMD_LIST_EVENTS:
+        pthread_mutex_unlock(&mutex);
+        pthread_mutex_lock(&outputlock);
+        if (ems_list_events(output_fd)) {
+          fprintf(stderr, "Failed to list events\n");
+        }
+        pthread_mutex_unlock(&outputlock);
+
+        break;
+
+      case CMD_WAIT:
+        if (parse_wait(fd, &delay, &thr_id) == -1) {  // thread_id is not implemented
+          fprintf(stderr, "Invalid command. See HELP for usage\n");
+          *returnValue = 0;
+          return (void *)returnValue;
+        }
+
+        if (delay > 0) {
+          // printf("Waiting...%d\n", thread_id);             // *****************************************************
+          if (thr_id != 0) {
+            wait_id = (int) thr_id;
+            wait_time = (int) delay;
+          }
+          else
+            ems_wait(delay);
+        }
+        pthread_mutex_unlock(&mutex);
+        break;
+
+      case CMD_INVALID:
+        pthread_mutex_unlock(&mutex);
+        fprintf(stderr, "Invalid command. See HELP for usage\n");
+        break;
+
+      case CMD_HELP: {
+        pthread_mutex_unlock(&mutex);
+        char* commands = "Available commands:\n"
+            "  CREATE <event_id> <num_rows> <num_columns>\n"
+            "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
+            "  SHOW <event_id>\n"
+            "  LIST\n"
+            "  WAIT <delay_ms> [thread_id]\n"  // thread_id is not implemented
+            "  BARRIER\n"                      // Not implemented
+            "  HELP\n";
+
+        pthread_mutex_lock(&outputlock);
+        write(output_fd, commands, strlen(commands));
+        pthread_mutex_unlock(&outputlock);
+
+        break;
+      }
+
+      case CMD_BARRIER:  // Not implemented
+        terminate_reading = 1;
+        pthread_mutex_unlock(&mutex);
+        *returnValue = 1;
+        return (void *)returnValue;
+
+      case CMD_EMPTY:
+        pthread_mutex_unlock(&mutex);
+        break;
+
+      case EOC:
+        terminate_reading = 1;
+        pthread_mutex_unlock(&mutex);
+        *returnValue = 0;
+        return (void *)returnValue;
+    }
+  }
+}
 
 int main(int argc, char *argv[]) {
   unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
   const char *dirpath = "jobs";
   DIR *dirp;
   unsigned int max_proc = 0;
+  unsigned int max_thr = 0;
 
   if (argc > 1) {
     char *endptr;
@@ -47,6 +205,16 @@ int main(int argc, char *argv[]) {
       return 1;
     }
     max_proc = (unsigned int)arg3;
+  }
+  if (argc > 4) {
+    char *endptr;
+    unsigned long int arg4 = strtoul(argv[4], &endptr, 10);
+
+    if (*endptr != '\0' || arg4 > UINT_MAX || arg4 == 0) {
+      fprintf(stderr, "Invalid max process value or value too large\n");
+      return 1;
+    }
+    max_thr = (unsigned int)arg4;
   }
 
   if (ems_init(state_access_delay_ms)) {
@@ -93,100 +261,43 @@ int main(int argc, char *argv[]) {
     strncat(output_file_path, dp->d_name, strlen(dp->d_name) - 4);
     strcat(output_file_path, "out");
 
-    int fd = open(file_path, O_RDONLY);
-    int output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+    fd = open(file_path, O_RDONLY);
+    output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
-    int end_of_file = 0;
-    while (!end_of_file) {
-      unsigned int event_id, delay;
-      size_t num_rows, num_columns, num_coords;
-      size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
-
-      switch (get_next(fd)) {
-        case CMD_CREATE:
-          if (parse_create(fd, &event_id, &num_rows, &num_columns) != 0) {
-            fprintf(stderr, "Invalid command. See HELP for usage\n");
-            continue;
-          }
-
-          if (ems_create(event_id, num_rows, num_columns)) {
-            fprintf(stderr, "Failed to create event\n");
-          }
-
-          break;
-
-        case CMD_RESERVE:
-          num_coords = parse_reserve(fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
-
-          if (num_coords == 0) {
-            fprintf(stderr, "Invalid command. See HELP for usage\n");
-            continue;
-          }
-
-          if (ems_reserve(event_id, num_coords, xs, ys)) {
-            fprintf(stderr, "Failed to reserve seats\n");
-          }
-
-          break;
-
-        case CMD_SHOW:
-          if (parse_show(fd, &event_id) != 0) {
-            fprintf(stderr, "Invalid command. See HELP for usage\n");
-            continue;
-          }
-
-          if (ems_show(event_id, output_fd)) {
-            fprintf(stderr, "Failed to show event\n");
-          }
-
-          break;
-
-        case CMD_LIST_EVENTS:
-          if (ems_list_events(output_fd)) {
-            fprintf(stderr, "Failed to list events\n");
-          }
-
-          break;
-
-        case CMD_WAIT:
-          if (parse_wait(fd, &delay, NULL) == -1) {  // thread_id is not implemented
-            fprintf(stderr, "Invalid command. See HELP for usage\n");
-            continue;
-          }
-
-          if (delay > 0) {
-            printf("Waiting...\n");
-            ems_wait(delay);
-          }
-
-          break;
-
-        case CMD_INVALID:
-          fprintf(stderr, "Invalid command. See HELP for usage\n");
-          break;
-
-        case CMD_HELP: {
-          char* commands = "Available commands:\n"
-              "  CREATE <event_id> <num_rows> <num_columns>\n"
-              "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
-              "  SHOW <event_id>\n"
-              "  LIST\n"
-              "  WAIT <delay_ms> [thread_id]\n"  // thread_id is not implemented
-              "  BARRIER\n"                      // Not implemented
-              "  HELP\n";
-          write(output_fd, commands, strlen(commands));
-          break;
+    pthread_mutex_init(&mutex, NULL);
+    pthread_mutex_init(&outputlock, NULL);
+    pthread_rwlock_init(&rwl, NULL);
+    pthread_t th[max_thr];
+    int barrier_found = 1;
+    while (barrier_found) {
+      terminate_reading = 0;
+      barrier_found = 0;
+      for (unsigned int i = 0; i < max_thr; i++) {
+         unsigned int* thread_id = malloc(sizeof(int));
+        *thread_id = i + 1;
+        if (pthread_create(&th[i], NULL, process_line, thread_id) != 0) {
+            fprintf(stderr, "Failed to create thread");
+            return 1;
         }
-
-        case CMD_BARRIER:  // Not implemented
-        case CMD_EMPTY:
-          break;
-
-        case EOC:
-          end_of_file = 1;
-          break;
-      } 
+      }
+      void * status = 0;
+      for (unsigned int i = 0; i < max_thr; i++) {
+        if (pthread_join(th[i], &status) != 0) {
+            fprintf(stderr, "Failed to create thread");
+            return 1;
+        }
+        if (*((int*)status) == 1) {
+          barrier_found = 1;
+        }
+        free(status);
+      }
     }
+
+    pthread_mutex_destroy(&mutex);
+    pthread_mutex_destroy(&outputlock);
+    pthread_rwlock_destroy(&rwl);
+
+    // while (!end_of_file) {}
   }
   else {
     // Waiting for all the child processes to finish

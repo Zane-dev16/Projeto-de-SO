@@ -13,17 +13,26 @@
 #include "operations.h"
 #include "parser.h"
 
-int  fd;
-int  output_fd;
+int fd;
+int output_fd;
 pthread_mutex_t mutex;
-pthread_rwlock_t rwl;
 pthread_mutex_t outputlock;
+pthread_rwlock_t rwl;
 
-int terminate_reading = 0;
-void * process_line() {
+// global variable for barrier
+int terminate_reading;
+
+// global variable for wait
+int wait_id = -1;
+int wait_time;
+
+void * process_line(void* arg) {
+
   int *returnValue = malloc(sizeof(int));
+  int thread_id = *(int*) arg;
+  free(arg);
   while (1) {
-    unsigned int event_id, delay;
+    unsigned int event_id, delay, thr_id;
     size_t num_rows, num_columns, num_coords;
     size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
 
@@ -33,7 +42,13 @@ void * process_line() {
       *returnValue = 0;
       return (void *)returnValue;
     }
-
+    if (thread_id == wait_id) {
+      pthread_mutex_unlock(&mutex);
+      // printf("waiting now... thread: %d\n", thread_id);
+      ems_wait((unsigned int)wait_time);
+      pthread_mutex_lock(&mutex);
+    }
+    // printf("%d\n", thread_id);
     switch (get_next(fd)) {
       case CMD_CREATE:
         if (parse_create(fd, &event_id, &num_rows, &num_columns) != 0) {
@@ -52,27 +67,24 @@ void * process_line() {
 
       case CMD_RESERVE:
         num_coords = parse_reserve(fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
+        pthread_mutex_unlock(&mutex);
 
         if (num_coords == 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
-          //continue;
           *returnValue = 0;
           return (void *)returnValue;
         }
-        pthread_mutex_unlock(&mutex);
 
         pthread_rwlock_wrlock(&rwl);
         if (ems_reserve(event_id, num_coords, xs, ys)) {
           fprintf(stderr, "Failed to reserve seats\n");
         }
         pthread_rwlock_unlock(&rwl);
-
         break;
 
       case CMD_SHOW:
         if (parse_show(fd, &event_id) != 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
-          //continue;
           *returnValue = 0;
           return (void *)returnValue;
         }
@@ -99,19 +111,22 @@ void * process_line() {
         break;
 
       case CMD_WAIT:
-        if (parse_wait(fd, &delay, NULL) == -1) {  // thread_id is not implemented
+        if (parse_wait(fd, &delay, &thr_id) == -1) {  // thread_id is not implemented
           fprintf(stderr, "Invalid command. See HELP for usage\n");
-          //continue;
           *returnValue = 0;
           return (void *)returnValue;
         }
-        pthread_mutex_unlock(&mutex);
 
         if (delay > 0) {
-          printf("Waiting...\n");
-          ems_wait(delay);
+          // printf("Waiting...%d\n", thread_id);             // *****************************************************
+          if (thr_id != 0) {
+            wait_id = (int) thr_id;
+            wait_time = (int) delay;
+          }
+          else
+            ems_wait(delay);
         }
-
+        pthread_mutex_unlock(&mutex);
         break;
 
       case CMD_INVALID:
@@ -138,11 +153,10 @@ void * process_line() {
       }
 
       case CMD_BARRIER:  // Not implemented
-        pthread_mutex_unlock(&mutex);
         terminate_reading = 1;
+        pthread_mutex_unlock(&mutex);
         *returnValue = 1;
         return (void *)returnValue;
-        break;
 
       case CMD_EMPTY:
         pthread_mutex_unlock(&mutex);
@@ -153,7 +167,6 @@ void * process_line() {
         pthread_mutex_unlock(&mutex);
         *returnValue = 0;
         return (void *)returnValue;
-        break;
     }
   }
 }
@@ -257,9 +270,12 @@ int main(int argc, char *argv[]) {
     pthread_t th[max_thr];
     int barrier_found = 1;
     while (barrier_found) {
+      terminate_reading = 0;
       barrier_found = 0;
       for (unsigned int i = 0; i < max_thr; i++) {
-        if (pthread_create(&th[i], NULL, process_line, NULL) != 0) {
+         unsigned int* thread_id = malloc(sizeof(int));
+        *thread_id = i + 1;
+        if (pthread_create(&th[i], NULL, process_line, thread_id) != 0) {
             fprintf(stderr, "Failed to create thread");
             return 1;
         }
@@ -271,10 +287,9 @@ int main(int argc, char *argv[]) {
             return 1;
         }
         if (*((int*)status) == 1) {
-          terminate_reading = 0;
-          free(status);
           barrier_found = 1;
         }
+        free(status);
       }
     }
 

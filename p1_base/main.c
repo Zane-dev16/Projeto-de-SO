@@ -43,6 +43,7 @@ void * process_line(void* arg) {
       return (void *)returnValue;
     }
     if (thread_id == wait_id) {
+      wait_id = -1;                         // sets wait_id to default again
       pthread_mutex_unlock(&mutex);
       // printf("waiting now... thread: %d\n", thread_id);
       ems_wait((unsigned int)wait_time);

@@ -2,6 +2,7 @@
 #define EVENT_LIST_H
 
 #include <stddef.h>
+#include <pthread.h>
 
 struct Event {
   unsigned int id;            /// Event id
@@ -11,6 +12,8 @@ struct Event {
   size_t rows;  /// Number of rows.
 
   unsigned int* data;  /// Array of size rows * cols with the reservations for each seat.
+  pthread_rwlock_t* seatlocks; /// Array of size rows * cols with locks for each seat.
+
 };
 
 struct ListNode {

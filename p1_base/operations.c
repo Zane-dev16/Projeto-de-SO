@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <time.h>
 #include <unistd.h>
 #include <string.h>
+
 
 #include "eventlist.h"
 
@@ -92,6 +94,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
   event->cols = num_cols;
   event->reservations = 0;
   event->data = malloc(num_rows * num_cols * sizeof(unsigned int));
+  event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_rwlock_t));
 
   if (event->data == NULL) {
     fprintf(stderr, "Error allocating memory for event data\n");
@@ -101,6 +104,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
 
   for (size_t i = 0; i < num_rows * num_cols; i++) {
     event->data[i] = 0;
+    pthread_rwlock_init(&event->seatlocks[i], NULL);
   }
 
   if (append_to_list(event_list, event) != 0) {
@@ -114,6 +118,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
 }
 
 int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys) {
+
   if (event_list == NULL) {
     fprintf(stderr, "EMS state must be initialized\n");
     return 1;
@@ -137,7 +142,7 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       fprintf(stderr, "Invalid seat\n");
       break;
     }
-
+    pthread_rwlock_wrlock(&event->seatlocks[i]);
     if (*get_seat_with_delay(event, seat_index(event, row, col)) != 0) {
       fprintf(stderr, "Seat already reserved\n");
       break;
@@ -153,6 +158,9 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       *get_seat_with_delay(event, seat_index(event, xs[j], ys[j])) = 0;
     }
     return 1;
+  }
+  for (size_t j = 0; j < i; j++) {
+      pthread_rwlock_unlock();
   }
 
   return 0;

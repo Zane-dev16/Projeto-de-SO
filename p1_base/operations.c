@@ -115,7 +115,6 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
     free(event);
     return 1;
   }
-
   return 0;
 }
 
@@ -184,6 +183,7 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
     size_t col = ys[i];
 
     if (row <= 0 || row > event->rows || col <= 0 || col > event->cols) {
+      can_reserve = 0;
       fprintf(stderr, "Invalid seat\n");
       break;
     }

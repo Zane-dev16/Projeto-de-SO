@@ -35,8 +35,6 @@ void * process_line(void* arg) {
     size_t num_rows, num_columns, num_coords;
     size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
 
-
-
     pthread_mutex_lock(&input_lock);
     if (terminate_reading) {
       pthread_mutex_unlock(&input_lock);
@@ -134,13 +132,14 @@ void * process_line(void* arg) {
 
       case CMD_HELP: {
         pthread_mutex_unlock(&input_lock);
+        // PRINTAR NO TERMINAL **********************************************************************************
         char* commands = "Available commands:\n"
             "  CREATE <event_id> <num_rows> <num_columns>\n"
             "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
             "  SHOW <event_id>\n"
             "  LIST\n"
-            "  WAIT <delay_ms> [thread_id]\n"  // thread_id is not implemented
-            "  BARRIER\n"                      // Not implemented
+            "  WAIT <delay_ms> [thread_id]\n"
+            "  BARRIER\n"
             "  HELP\n";
 
         write(output_fd, commands, strlen(commands));
@@ -148,10 +147,10 @@ void * process_line(void* arg) {
         break;
       }
 
-      case CMD_BARRIER:  // Not implemented
+      case CMD_BARRIER:
         terminate_reading = 1;
-        pthread_mutex_unlock(&input_lock);
         *returnValue = 1;
+        pthread_mutex_unlock(&input_lock);
         return (void *)returnValue;
 
       case CMD_EMPTY:
@@ -160,8 +159,8 @@ void * process_line(void* arg) {
 
       case EOC:
         terminate_reading = 1;
-        pthread_mutex_unlock(&input_lock);
         *returnValue = 0;
+        pthread_mutex_unlock(&input_lock);
         return (void *)returnValue;
     }
   }

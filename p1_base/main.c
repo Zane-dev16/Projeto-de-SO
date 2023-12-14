@@ -15,8 +15,8 @@
 
 int fd;
 int output_fd;
-pthread_mutex_t mutex;
-pthread_mutex_t outputlock;
+pthread_mutex_t input_lock;
+pthread_mutex_t output_lock;
 pthread_rwlock_t rwl;
 
 // global variable for barrier
@@ -36,17 +36,20 @@ void * process_line(void* arg) {
     size_t num_rows, num_columns, num_coords;
     size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
 
-    pthread_mutex_lock(&mutex);
+
+
+    pthread_mutex_lock(&input_lock);
     if (terminate_reading) {
-      pthread_mutex_unlock(&mutex);
+      pthread_mutex_unlock(&input_lock);
       *returnValue = 0;
       return (void *)returnValue;
     }
     if (thread_id == wait_id) {
-      pthread_mutex_unlock(&mutex);
+      wait_id = -1;                         // sets wait_id to default again
+      pthread_mutex_unlock(&input_lock);
       // printf("waiting now... thread: %d\n", thread_id);
       ems_wait((unsigned int)wait_time);
-      pthread_mutex_lock(&mutex);
+      pthread_mutex_lock(&input_lock);
     }
     // printf("%d\n", thread_id);
     switch (get_next(fd)) {
@@ -61,13 +64,13 @@ void * process_line(void* arg) {
         if (ems_create(event_id, num_rows, num_columns)) {
           fprintf(stderr, "Failed to create event\n");
         }
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
 
         break;
 
       case CMD_RESERVE:
         num_coords = parse_reserve(fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
 
         if (num_coords == 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
@@ -75,7 +78,7 @@ void * process_line(void* arg) {
           return (void *)returnValue;
         }
 
-        pthread_rwlock_wrlock(&rwl);
+        pthread_rwlock_rdlock(&rwl);
         if (ems_reserve(event_id, num_coords, xs, ys)) {
           fprintf(stderr, "Failed to reserve seats\n");
         }
@@ -88,25 +91,23 @@ void * process_line(void* arg) {
           *returnValue = 0;
           return (void *)returnValue;
         }
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
 
-        pthread_rwlock_rdlock(&rwl);
-        pthread_mutex_lock(&outputlock);
+        pthread_rwlock_wrlock(&rwl);
         if (ems_show(event_id, output_fd)) {
           fprintf(stderr, "Failed to show event\n");
         }
-        pthread_mutex_unlock(&outputlock);
         pthread_rwlock_unlock(&rwl);
 
         break;
 
       case CMD_LIST_EVENTS:
-        pthread_mutex_unlock(&mutex);
-        pthread_mutex_lock(&outputlock);
+        pthread_mutex_unlock(&input_lock);
+        pthread_mutex_lock(&output_lock);
         if (ems_list_events(output_fd)) {
           fprintf(stderr, "Failed to list events\n");
         }
-        pthread_mutex_unlock(&outputlock);
+        pthread_mutex_unlock(&output_lock);
 
         break;
 
@@ -126,16 +127,16 @@ void * process_line(void* arg) {
           else
             ems_wait(delay);
         }
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
         break;
 
       case CMD_INVALID:
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
         fprintf(stderr, "Invalid command. See HELP for usage\n");
         break;
 
       case CMD_HELP: {
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
         char* commands = "Available commands:\n"
             "  CREATE <event_id> <num_rows> <num_columns>\n"
             "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
@@ -145,26 +146,24 @@ void * process_line(void* arg) {
             "  BARRIER\n"                      // Not implemented
             "  HELP\n";
 
-        pthread_mutex_lock(&outputlock);
         write(output_fd, commands, strlen(commands));
-        pthread_mutex_unlock(&outputlock);
 
         break;
       }
 
       case CMD_BARRIER:  // Not implemented
         terminate_reading = 1;
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
         *returnValue = 1;
         return (void *)returnValue;
 
       case CMD_EMPTY:
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
         break;
 
       case EOC:
         terminate_reading = 1;
-        pthread_mutex_unlock(&mutex);
+        pthread_mutex_unlock(&input_lock);
         *returnValue = 0;
         return (void *)returnValue;
     }
@@ -264,8 +263,8 @@ int main(int argc, char *argv[]) {
     fd = open(file_path, O_RDONLY);
     output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
-    pthread_mutex_init(&mutex, NULL);
-    pthread_mutex_init(&outputlock, NULL);
+    pthread_mutex_init(&input_lock, NULL);
+    pthread_mutex_init(&output_lock, NULL);
     pthread_rwlock_init(&rwl, NULL);
     pthread_t th[max_thr];
     int barrier_found = 1;
@@ -293,8 +292,8 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    pthread_mutex_destroy(&mutex);
-    pthread_mutex_destroy(&outputlock);
+    pthread_mutex_destroy(&input_lock);
+    pthread_mutex_destroy(&output_lock);
     pthread_rwlock_destroy(&rwl);
 
     // while (!end_of_file) {}

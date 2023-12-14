@@ -2,6 +2,7 @@
 
 #include <stdlib.h>
 
+
 struct EventList* create_list() {
   struct EventList* list = (struct EventList*)malloc(sizeof(struct EventList));
   if (!list) return NULL;
@@ -34,6 +35,11 @@ static void free_event(struct Event* event) {
   if (!event) return;
 
   free(event->data);
+  for (size_t i = 0; i < event->rows * event->cols; i++) {
+    pthread_mutex_destroy(&event->seatlocks[i]);
+  }
+  free(event->seatlocks);
+  pthread_rwlock_destroy(&event->event_lock);
   free(event);
 }
 

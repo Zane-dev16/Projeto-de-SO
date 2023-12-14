@@ -94,7 +94,8 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
   event->cols = num_cols;
   event->reservations = 0;
   event->data = malloc(num_rows * num_cols * sizeof(unsigned int));
-  event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_rwlock_t));
+  event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_mutex_t));
+  pthread_rwlock_init(&event->event_lock, NULL);
 
   if (event->data == NULL) {
     fprintf(stderr, "Error allocating memory for event data\n");
@@ -104,7 +105,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
 
   for (size_t i = 0; i < num_rows * num_cols; i++) {
     event->data[i] = 0;
-    pthread_rwlock_init(&event->seatlocks[i], NULL);
+    pthread_mutex_init(&event->seatlocks[i], NULL);
   }
 
   if (append_to_list(event_list, event) != 0) {
@@ -116,6 +117,39 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
 
   return 0;
 }
+
+
+void bubble_sort_seats(size_t arr1[], size_t arr2[], size_t n) {
+    for (size_t i = 0; i < n - 1; ++i) {
+        size_t swapped = 0; // Flag to check if any elements are swapped
+        for (size_t j = 0; j < n - i - 1; ++j) {
+            // Swap adjacent elements if they are in the wrong order
+            if (arr1[j] > arr1[j + 1]) {
+                size_t temp = arr1[j];
+                arr1[j] = arr1[j + 1];
+                arr1[j + 1] = temp;
+
+                temp = arr2[j];
+                arr2[j] = arr2[j + 1];
+                arr2[j + 1] = temp;
+                swapped = 1; // Set swapped flag if a swap occurs
+            }
+            else if (arr1[j] == arr1[j + 1]) {
+              if (arr2[j] > arr2[j + 1]) {
+                size_t temp = arr2[j];
+                arr2[j] = arr2[j + 1];
+                arr2[j + 1] = temp;
+                swapped = 1; // Set swapped flag if a swap occurs
+              }
+            }
+        }
+        // If no two elements were swapped in the inner loop, array is sorted
+        if (swapped == 0) {
+            break;
+        }
+    }
+}
+
 
 int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys) {
 
@@ -130,9 +164,11 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
     fprintf(stderr, "Event not found\n");
     return 1;
   }
+  bubble_sort_seats(xs, ys, num_seats);
 
   unsigned int reservation_id = ++event->reservations;
 
+  pthread_rwlock_rdlock(&event->event_lock);
   size_t i = 0;
   for (; i < num_seats; i++) {
     size_t row = xs[i];
@@ -142,11 +178,12 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       fprintf(stderr, "Invalid seat\n");
       break;
     }
-    pthread_rwlock_wrlock(&event->seatlocks[i]);
+
     if (*get_seat_with_delay(event, seat_index(event, row, col)) != 0) {
       fprintf(stderr, "Seat already reserved\n");
       break;
     }
+    pthread_mutex_lock(&event->seatlocks[seat_index(event, xs[i], ys[i])]);
 
     *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
   }
@@ -157,15 +194,18 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
     for (size_t j = 0; j < i; j++) {
       *get_seat_with_delay(event, seat_index(event, xs[j], ys[j])) = 0;
     }
-    return 1;
   }
   for (size_t j = 0; j < i; j++) {
-      pthread_rwlock_unlock();
+    size_t row = xs[j];
+    size_t col = ys[j];
+    pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
   }
-
+  pthread_rwlock_unlock(&event->event_lock);
+  if (i < num_seats) {
+    return 1;
+  }
   return 0;
 }
-
 
 int ems_show(unsigned int event_id, int fd) {
   if (event_list == NULL) {
@@ -175,10 +215,12 @@ int ems_show(unsigned int event_id, int fd) {
 
   struct Event* event = get_event_with_delay(event_id);
 
+
   if (event == NULL) {
     fprintf(stderr, "Event not found\n");
     return 1;
   }
+  pthread_rwlock_wrlock(&event->event_lock);
 
   for (size_t i = 1; i <= event->rows; i++) {
     for (size_t j = 1; j <= event->cols; j++) {
@@ -194,6 +236,7 @@ int ems_show(unsigned int event_id, int fd) {
 
     write(fd, "\n", strlen("\n"));
   }
+  pthread_rwlock_unlock(&event->event_lock);
 
   return 0;
 }

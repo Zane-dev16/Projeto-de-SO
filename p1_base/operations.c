@@ -119,7 +119,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
 }
 
 
-void bubble_sort_seats(size_t arr1[], size_t arr2[], size_t n) {
+int bubble_sort_seats(size_t arr1[], size_t arr2[], size_t n) {
     for (size_t i = 0; i < n - 1; ++i) {
         size_t swapped = 0; // Flag to check if any elements are swapped
         for (size_t j = 0; j < n - i - 1; ++j) {
@@ -135,6 +135,9 @@ void bubble_sort_seats(size_t arr1[], size_t arr2[], size_t n) {
                 swapped = 1; // Set swapped flag if a swap occurs
             }
             else if (arr1[j] == arr1[j + 1]) {
+              if (arr2[j] == arr2[j + 1]) {
+                return 1;
+              }
               if (arr2[j] > arr2[j + 1]) {
                 size_t temp = arr2[j];
                 arr2[j] = arr2[j + 1];
@@ -148,6 +151,7 @@ void bubble_sort_seats(size_t arr1[], size_t arr2[], size_t n) {
             break;
         }
     }
+    return 0;
 }
 
 
@@ -164,7 +168,11 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
     fprintf(stderr, "Event not found\n");
     return 1;
   }
-  bubble_sort_seats(xs, ys, num_seats);
+
+  if(bubble_sort_seats(xs, ys, num_seats)) {
+    fprintf(stderr, "Seat already reserved\n");
+    return 1;
+  }
 
   unsigned int reservation_id = ++event->reservations;
 
@@ -178,30 +186,24 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       fprintf(stderr, "Invalid seat\n");
       break;
     }
-
+    pthread_mutex_lock(&event->seatlocks[seat_index(event, xs[i], ys[i])]);
     if (*get_seat_with_delay(event, seat_index(event, row, col)) != 0) {
       fprintf(stderr, "Seat already reserved\n");
       break;
     }
-    pthread_mutex_lock(&event->seatlocks[seat_index(event, xs[i], ys[i])]);
-
     *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
   }
 
-  // If the reservation was not successful, free the seats that were reserved.
-  if (i < num_seats) {
-    event->reservations--;
-    for (size_t j = 0; j < i; j++) {
-      *get_seat_with_delay(event, seat_index(event, xs[j], ys[j])) = 0;
-    }
-  }
   for (size_t j = 0; j < i; j++) {
+    if (i < num_seats)
+      *get_seat_with_delay(event, seat_index(event, xs[j], ys[j])) = 0;
     size_t row = xs[j];
     size_t col = ys[j];
     pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
   }
   pthread_rwlock_unlock(&event->event_lock);
   if (i < num_seats) {
+    event->reservations--;
     return 1;
   }
   return 0;

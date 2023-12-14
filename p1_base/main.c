@@ -17,7 +17,6 @@ int fd;
 int output_fd;
 pthread_mutex_t input_lock;
 pthread_mutex_t output_lock;
-pthread_rwlock_t rwl;
 
 // global variable for barrier
 int terminate_reading;
@@ -78,11 +77,9 @@ void * process_line(void* arg) {
           return (void *)returnValue;
         }
 
-        pthread_rwlock_rdlock(&rwl);
         if (ems_reserve(event_id, num_coords, xs, ys)) {
           fprintf(stderr, "Failed to reserve seats\n");
         }
-        pthread_rwlock_unlock(&rwl);
         break;
 
       case CMD_SHOW:
@@ -93,11 +90,11 @@ void * process_line(void* arg) {
         }
         pthread_mutex_unlock(&input_lock);
 
-        pthread_rwlock_wrlock(&rwl);
+        pthread_mutex_lock(&output_lock);
         if (ems_show(event_id, output_fd)) {
           fprintf(stderr, "Failed to show event\n");
         }
-        pthread_rwlock_unlock(&rwl);
+        pthread_mutex_unlock(&output_lock);
 
         break;
 
@@ -265,7 +262,6 @@ int main(int argc, char *argv[]) {
 
     pthread_mutex_init(&input_lock, NULL);
     pthread_mutex_init(&output_lock, NULL);
-    pthread_rwlock_init(&rwl, NULL);
     pthread_t th[max_thr];
     int barrier_found = 1;
     while (barrier_found) {
@@ -294,7 +290,6 @@ int main(int argc, char *argv[]) {
 
     pthread_mutex_destroy(&input_lock);
     pthread_mutex_destroy(&output_lock);
-    pthread_rwlock_destroy(&rwl);
 
     // while (!end_of_file) {}
   }

@@ -238,6 +238,9 @@ int process_file(unsigned int max_thr) {
       terminate_reading = 0;
       barrier_found = 0;
       for (unsigned int i = 0; i < max_thr; i++) {
+        wait_times[i + 1] = 0;
+      }
+      for (unsigned int i = 0; i < max_thr; i++) {
         thr_args *args = malloc(sizeof(thr_args));
         if (args == NULL) {
           fprintf(stderr, "Failed to allocate memory for thread_id");
@@ -245,7 +248,6 @@ int process_file(unsigned int max_thr) {
         }
         args->thread_id = i+1;
         args->max_thr = max_thr;
-        wait_times[i + 1] = 0;
         if (pthread_create(&th[i], NULL, process_line, args) != 0) {
             fprintf(stderr, "Failed to create thread");
             return 1;

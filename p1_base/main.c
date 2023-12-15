@@ -17,13 +17,9 @@
 
 int jobs_fd;
 int output_fd;
-pthread_mutex_t input_lock;
-
-// global variable for barrier
 int terminate_reading;
-
-// global variable for wait
 int* wait_times;
+pthread_mutex_t input_lock;
 
 void * process_line(void* arg) {
 
@@ -41,13 +37,12 @@ void * process_line(void* arg) {
       *returnValue = 0;
       return (void *)returnValue;
     }
-    if (wait_times[thread_id]) {                  // sets wait_id to default again
+    if (wait_times[thread_id]) {
       pthread_mutex_unlock(&input_lock);
       ems_wait((unsigned int)wait_times[thread_id]);
       wait_times[thread_id] = 0;
       pthread_mutex_lock(&input_lock);
     }
-    // printf("%d\n", thread_id);
     switch (get_next(jobs_fd)) {
       case CMD_CREATE:
         if (parse_create(jobs_fd, &event_id, &num_rows, &num_columns) != 0) {
@@ -126,7 +121,6 @@ void * process_line(void* arg) {
 
       case CMD_HELP: {
         pthread_mutex_unlock(&input_lock);
-        // PRINTAR NO TERMINAL **********************************************************************************
         printf("Available commands:\n"
             "  CREATE <event_id> <num_rows> <num_columns>\n"
             "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"

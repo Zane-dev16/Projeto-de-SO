@@ -22,14 +22,21 @@ int terminate_reading;
 int* wait_times;
 pthread_mutex_t input_lock;
 
+typedef struct {
+    unsigned int thread_id;
+    unsigned int max_thr;
+} thr_args;
+
 void * process_line(void* arg) {
+  thr_args const *args = (thr_args const *)arg;
 
   int *returnValue = malloc(sizeof(int));
   if (returnValue == NULL) {
     fprintf(stderr, "Failed to allocate memory for return value");
     exit(1);
   }
-  int thread_id = *(int*) arg;
+  unsigned int thread_id = args->thread_id;
+  unsigned int max_thr = args->max_thr;
   free(arg);
   while (1) {
     unsigned int event_id, delay, thr_id;
@@ -43,9 +50,10 @@ void * process_line(void* arg) {
       return (void *)returnValue;
     }
     if (wait_times[thread_id]) {
-      pthread_mutex_unlock(&input_lock);
-      ems_wait((unsigned int)wait_times[thread_id]);
+      unsigned int wait_time = (unsigned int)wait_times[thread_id];
       wait_times[thread_id] = 0;
+      pthread_mutex_unlock(&input_lock);
+      ems_wait(wait_time);
       pthread_mutex_lock(&input_lock);
     }
     switch (get_next(jobs_fd)) {
@@ -111,10 +119,13 @@ void * process_line(void* arg) {
         if (delay > 0) {
           fprintf(stderr, "Waiting...\n");
           if (thr_id != 0) {
-            wait_times[thr_id] = (int)delay;
+            wait_times[thr_id] += (int)delay;
+          } 
+          else {
+            for (unsigned int i = 0; i <= max_thr; i++) {
+              wait_times[thr_id] += (int)delay;
+            }
           }
-          else
-            ems_wait(delay);
         }
         pthread_mutex_unlock(&input_lock);
         break;
@@ -227,14 +238,15 @@ int process_file(unsigned int max_thr) {
       terminate_reading = 0;
       barrier_found = 0;
       for (unsigned int i = 0; i < max_thr; i++) {
-        unsigned int* thread_id = malloc(sizeof(int));
-        if (thread_id == NULL) {
+        thr_args *args = malloc(sizeof(thr_args));
+        if (args == NULL) {
           fprintf(stderr, "Failed to allocate memory for thread_id");
           return 1;
         }
-        *thread_id = i + 1;
-        wait_times[*thread_id] = 0;
-        if (pthread_create(&th[i], NULL, process_line, thread_id) != 0) {
+        args->thread_id = i+1;
+        args->max_thr = max_thr;
+        wait_times[i + 1] = 0;
+        if (pthread_create(&th[i], NULL, process_line, args) != 0) {
             fprintf(stderr, "Failed to create thread");
             return 1;
         }

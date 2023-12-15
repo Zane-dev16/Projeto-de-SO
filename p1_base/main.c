@@ -238,29 +238,30 @@ int main(int argc, char *argv[]) {
   pid_t pid = 1;
   unsigned int num_proc = 0;
 
+
   if (argc > 1) {
-    if (parseValue(&state_access_delay_ms, argv[1])) {
-      fprintf(stderr, "Invalid delay value or value too large\n");
-      return 1;
-    }
-  }
-  if (argc > 2) {
-    dirpath = argv[2];
+    dirpath = argv[1];
     dirp = opendir(dirpath);
     if (dirp == NULL) {
       fprintf(stderr, "Open dir failed\n");
       return 1;
     }
   }
-  if (argc > 3) {
-    if (parseValue(&max_proc, argv[1])) {
+  if (argc > 2) {
+    if (parseValue(&max_proc, argv[2])) {
       fprintf(stderr, "Invalid max process value or value too large\n");
       return 1;
     }
   }
-  if (argc > 4) {
-    if (parseValue(&max_thr, argv[1])) {
+  if (argc > 3) {
+    if (parseValue(&max_thr, argv[3])) {
       fprintf(stderr, "Invalid max thread value or value too large\n");
+      return 1;
+    }
+  }
+  if (argc > 4) {
+    if (parseValue(&state_access_delay_ms, argv[4])) {
+      fprintf(stderr, "Invalid delay value or value too large\n");
       return 1;
     }
   }

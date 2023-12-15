@@ -5,9 +5,9 @@
 #include <unistd.h>
 #include <string.h>
 
-
 #include "eventlist.h"
 
+pthread_mutex_t output_lock;
 static struct EventList* event_list = NULL;
 static unsigned int state_access_delay_ms = 0;
 
@@ -54,7 +54,7 @@ int ems_init(unsigned int delay_ms) {
     fprintf(stderr, "EMS state has already been initialized\n");
     return 1;
   }
-
+  pthread_mutex_init(&output_lock, NULL);
   event_list = create_list();
   state_access_delay_ms = delay_ms;
 
@@ -66,8 +66,8 @@ int ems_terminate() {
     fprintf(stderr, "EMS state must be initialized\n");
     return 1;
   }
-
   free_list(event_list);
+  pthread_mutex_destroy(&output_lock);
   return 0;
 }
 
@@ -82,7 +82,6 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
     fprintf(stderr, "Event already exists\n");
     return 1;
   }
-
   struct Event* event = malloc(sizeof(struct Event));
 
   if (event == NULL) {
@@ -200,6 +199,7 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       size_t row = xs[j];
       size_t col = ys[j];
       *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
+      printf("%d\n", reservation_id);
       pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
     }
     pthread_rwlock_unlock(&event->event_lock);

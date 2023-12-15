@@ -22,8 +22,7 @@ pthread_mutex_t output_lock;
 int terminate_reading;
 
 // global variable for wait
-int wait_id = -1;
-int wait_time;
+int* wait_times;
 
 void * process_line(void* arg) {
 
@@ -41,11 +40,11 @@ void * process_line(void* arg) {
       *returnValue = 0;
       return (void *)returnValue;
     }
-    if (thread_id == wait_id) {
-      wait_id = -1;                         // sets wait_id to default again
+    if (wait_times[thread_id]) {                  // sets wait_id to default again
       pthread_mutex_unlock(&input_lock);
       // printf("waiting now... thread: %d\n", thread_id);
-      ems_wait((unsigned int)wait_time);
+      ems_wait((unsigned int)wait_times[thread_id]);
+      wait_times[thread_id] = 0;
       pthread_mutex_lock(&input_lock);
     }
     // printf("%d\n", thread_id);
@@ -107,7 +106,7 @@ void * process_line(void* arg) {
         break;
 
       case CMD_WAIT:
-        if (parse_wait(fd, &delay, &thr_id) == -1) {  // thread_id is not implemented
+        if (parse_wait(fd, &delay, &thr_id) == -1) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
           *returnValue = 0;
           return (void *)returnValue;
@@ -116,8 +115,7 @@ void * process_line(void* arg) {
         if (delay > 0) {
           // printf("Waiting...%d\n", thread_id);             // *****************************************************
           if (thr_id != 0) {
-            wait_id = (int) thr_id;
-            wait_time = (int) delay;
+            wait_times[thr_id] = (int)delay;
           }
           else
             ems_wait(delay);
@@ -262,13 +260,15 @@ int main(int argc, char *argv[]) {
     pthread_mutex_init(&input_lock, NULL);
     pthread_mutex_init(&output_lock, NULL);
     pthread_t th[max_thr];
+    wait_times = (int*)malloc((max_thr + 1) * sizeof(int));
     int barrier_found = 1;
     while (barrier_found) {
       terminate_reading = 0;
       barrier_found = 0;
       for (unsigned int i = 0; i < max_thr; i++) {
-         unsigned int* thread_id = malloc(sizeof(int));
+        unsigned int* thread_id = malloc(sizeof(int));
         *thread_id = i + 1;
+        wait_times[*thread_id] = 0;
         if (pthread_create(&th[i], NULL, process_line, thread_id) != 0) {
             fprintf(stderr, "Failed to create thread");
             return 1;
@@ -286,7 +286,7 @@ int main(int argc, char *argv[]) {
         free(status);
       }
     }
-
+    free(wait_times);
     pthread_mutex_destroy(&input_lock);
     pthread_mutex_destroy(&output_lock);
 

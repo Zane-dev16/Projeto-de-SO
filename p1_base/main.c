@@ -49,7 +49,7 @@ void * process_line(void* arg) {
       *returnValue = 0;
       return (void *)returnValue;
     }
-    if (wait_times[thread_id]) {
+    while (wait_times[thread_id]) {
       unsigned int wait_time = (unsigned int)wait_times[thread_id];
       wait_times[thread_id] = 0;
       pthread_mutex_unlock(&input_lock);
@@ -122,8 +122,8 @@ void * process_line(void* arg) {
             wait_times[thr_id] += (int)delay;
           } 
           else {
-            for (unsigned int i = 0; i <= max_thr; i++) {
-              wait_times[thr_id] += (int)delay;
+            for (unsigned int i = 1; i <= max_thr; i++) {
+              wait_times[i] += (int)delay;
             }
           }
         }

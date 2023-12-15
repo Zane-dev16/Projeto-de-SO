@@ -13,7 +13,9 @@
 #include "operations.h"
 #include "parser.h"
 
-int fd;
+#define MAX_PATH_LENGTH 256
+
+int jobs_fd;
 int output_fd;
 pthread_mutex_t input_lock;
 
@@ -46,9 +48,9 @@ void * process_line(void* arg) {
       pthread_mutex_lock(&input_lock);
     }
     // printf("%d\n", thread_id);
-    switch (get_next(fd)) {
+    switch (get_next(jobs_fd)) {
       case CMD_CREATE:
-        if (parse_create(fd, &event_id, &num_rows, &num_columns) != 0) {
+        if (parse_create(jobs_fd, &event_id, &num_rows, &num_columns) != 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
           *returnValue = 0;
           return (void *)returnValue;
@@ -62,7 +64,7 @@ void * process_line(void* arg) {
         break;
 
       case CMD_RESERVE:
-        num_coords = parse_reserve(fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
+        num_coords = parse_reserve(jobs_fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
         pthread_mutex_unlock(&input_lock);
 
         if (num_coords == 0) {
@@ -77,7 +79,7 @@ void * process_line(void* arg) {
         break;
 
       case CMD_SHOW:
-        if (parse_show(fd, &event_id) != 0) {
+        if (parse_show(jobs_fd, &event_id) != 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
           *returnValue = 0;
           return (void *)returnValue;
@@ -100,7 +102,7 @@ void * process_line(void* arg) {
         break;
 
       case CMD_WAIT:
-        if (parse_wait(fd, &delay, &thr_id) == -1) {
+        if (parse_wait(jobs_fd, &delay, &thr_id) == -1) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
           *returnValue = 0;
           return (void *)returnValue;
@@ -157,103 +159,49 @@ void * process_line(void* arg) {
   }
 }
 
-int main(int argc, char *argv[]) {
-  unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
-  const char *dirpath = "jobs";
-  DIR *dirp;
-  unsigned int max_proc = 0;
-  unsigned int max_thr = 0;
+void openJobsFile(const char *dirpath, const char *filename) {
+    char file_path[MAX_PATH_LENGTH];
+    snprintf(file_path, sizeof(file_path), "%s/%s", dirpath, filename);
 
-  if (argc > 1) {
-    char *endptr;
-    unsigned long int delay = strtoul(argv[1], &endptr, 10);
+    jobs_fd = open(file_path, O_RDONLY);
+}
 
-    if (*endptr != '\0' || delay > UINT_MAX) {
-      fprintf(stderr, "Invalid delay value or value too large\n");
-      return 1;
-    }
-    state_access_delay_ms = (unsigned int)delay;
-  }
-  if (argc > 2) {
-    dirpath = argv[2];
-    dirp = opendir(dirpath);
-    if (dirp == NULL) {
-      fprintf(stderr, "Open dir failed\n");
-      return 1;
-    }
-  }
-  if (argc > 3) {
-    char *endptr;
-    unsigned long int arg3 = strtoul(argv[3], &endptr, 10);
-
-    if (*endptr != '\0' || arg3 > UINT_MAX || arg3 == 0) {
-      fprintf(stderr, "Invalid max process value or value too large\n");
-      return 1;
-    }
-    max_proc = (unsigned int)arg3;
-  }
-  if (argc > 4) {
-    char *endptr;
-    unsigned long int arg4 = strtoul(argv[4], &endptr, 10);
-
-    if (*endptr != '\0' || arg4 > UINT_MAX || arg4 == 0) {
-      fprintf(stderr, "Invalid max process value or value too large\n");
-      return 1;
-    }
-    max_thr = (unsigned int)arg4;
-  }
-
-  if (ems_init(state_access_delay_ms)) {
-    fprintf(stderr, "Failed to initialize EMS\n");
-    return 1;
-  }
-
-  struct dirent *dp;
-  pid_t pid = 1;
-  unsigned int num_proc = 0;
-  while (1) {
-    errno = 0; /* To distinguish error from end-of-directory */
-    dp = readdir(dirp);
-    if (dp == NULL)
-        break;
-
-    // Check if the file name ends with ".jobs"
-    if (!(strlen(dp->d_name) >= 5 && strcmp(dp->d_name + strlen(dp->d_name) - 5, ".jobs") == 0))
-      continue;
-
-    if (num_proc == max_proc) {
-      wait(NULL);
-      num_proc--;
-    }
-    if (pid != 0) {
-      num_proc++;
-      pid = fork();
-    }
-    if (pid == -1)
-      fprintf(stderr, "Error creating fork\n");
-    if (pid == 0)
-      break;
-  }
-
-  if (pid == 0) {
-    char file_path[256];
-    strcpy(file_path, dirpath);
-    strcat(file_path, "/");
-    strcat(file_path, dp->d_name);
-
-    char output_file_path[256];
-    strcpy(output_file_path, dirpath);
-    strcat(output_file_path, "/");
-    strncat(output_file_path, dp->d_name, strlen(dp->d_name) - 4);
-    strcat(output_file_path, "out");
-
-    fd = open(file_path, O_RDONLY);
+void openOutputFile(const char *dirpath, const char *filename) {
+    char output_file_path[MAX_PATH_LENGTH];
+    snprintf(output_file_path, sizeof(output_file_path), "%s/%.*sout", dirpath, (int)(strlen(filename) - 4), filename);
     output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+}
 
-    pthread_mutex_init(&input_lock, NULL);
+int parseValue(unsigned int *value, const char *arg) {
+    char *endptr;
+    unsigned long int val = strtoul(arg, &endptr, 10);
+
+    if (*endptr != '\0' || val > UINT_MAX || val == 0) {
+        return 1;
+    }
+
+    *value = (unsigned int)val;
+    return 0;
+}
+
+int is_jobs_file(const char *filename) {
+    return !(strlen(filename) >= 5 && strcmp(filename + strlen(filename) - 5, ".jobs") == 0);
+}
+
+void init_globals(unsigned int max_thr, const char *dirpath, const char *filename) {
+  pthread_mutex_init(&input_lock, NULL);
+  wait_times = (int*)malloc((max_thr + 1) * sizeof(int));
+  openJobsFile(dirpath, filename);
+  openOutputFile(dirpath, filename);
+}
+
+void terminate_globals() {
+  free(wait_times);
+  pthread_mutex_destroy(&input_lock);
+}
+
+int process_file(unsigned int max_thr) {
     pthread_t th[max_thr];
-    wait_times = (int*)malloc((max_thr + 1) * sizeof(int));
-    
     int barrier_found = 1;
     while (barrier_found) {
       terminate_reading = 0;
@@ -279,13 +227,84 @@ int main(int argc, char *argv[]) {
         free(status);
       }
     }
-    free(wait_times);
-    pthread_mutex_destroy(&input_lock);
+    return 0;
+}
 
+void wait_for_children() {
+    while (wait(NULL) > 0);
+}
+
+int main(int argc, char *argv[]) {
+  unsigned int state_access_delay_ms = STATE_ACCESS_DELAY_MS;
+  const char *dirpath = "jobs";
+  DIR *dirp;
+  unsigned int max_proc = 0;
+  unsigned int max_thr = 0;
+  struct dirent *dp;
+  pid_t pid = 1;
+  unsigned int num_proc = 0;
+
+  if (argc > 1) {
+    if (parseValue(&state_access_delay_ms, argv[1])) {
+      fprintf(stderr, "Invalid delay value or value too large\n");
+      return 1;
+    }
+  }
+  if (argc > 2) {
+    dirpath = argv[2];
+    dirp = opendir(dirpath);
+    if (dirp == NULL) {
+      fprintf(stderr, "Open dir failed\n");
+      return 1;
+    }
+  }
+  if (argc > 3) {
+    if (parseValue(&max_proc, argv[1])) {
+      fprintf(stderr, "Invalid max process value or value too large\n");
+      return 1;
+    }
+  }
+  if (argc > 4) {
+    if (parseValue(&max_thr, argv[1])) {
+      fprintf(stderr, "Invalid max thread value or value too large\n");
+      return 1;
+    }
+  }
+  if (ems_init(state_access_delay_ms)) {
+    fprintf(stderr, "Failed to initialize EMS\n");
+    return 1;
+  }
+
+  while (1) {
+    errno = 0;
+    dp = readdir(dirp);
+    if (dp == NULL)
+      break;
+    if (is_jobs_file(dp->d_name))
+      continue;
+    if (num_proc == max_proc) {
+      wait(NULL);
+      num_proc--;
+    }
+    if (pid != 0) {
+      num_proc++;
+      pid = fork();
+    }
+    if (pid == -1)
+      fprintf(stderr, "Error creating fork\n");
+    if (pid == 0)
+      break;
+  }
+
+  if (pid == 0) {
+    init_globals(max_thr, dirpath, dp->d_name);
+    if(process_file(max_thr)) {
+      return 1;
+    }
+    terminate_globals();
   }
   else {
-    // Waiting for all the child processes to finish
-    while (wait(NULL) > 0);
+    wait_for_children();
   }
   ems_terminate();
   closedir(dirp);

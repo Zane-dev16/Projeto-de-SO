@@ -43,18 +43,30 @@ void * process_line(void* arg) {
     size_t num_rows, num_columns, num_coords;
     size_t xs[MAX_RESERVATION_SIZE], ys[MAX_RESERVATION_SIZE];
 
-    pthread_mutex_lock(&input_lock);
+    if(pthread_mutex_lock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    }
     if (terminate_reading) {
-      pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+        fprintf(stderr, "Lock Error\n"); 
+        exit(1);
+      }
       *returnValue = 0;
       return (void *)returnValue;
     }
     while (wait_times[thread_id]) {
       unsigned int wait_time = (unsigned int)wait_times[thread_id];
       wait_times[thread_id] = 0;
-      pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+        fprintf(stderr, "Lock Error\n"); 
+        exit(1);
+      }
       ems_wait(wait_time);
-      pthread_mutex_lock(&input_lock);
+      if(pthread_mutex_lock(&input_lock)) {
+        fprintf(stderr, "Lock Error\n");
+        exit(1);
+      }
     }
     switch (get_next(jobs_fd)) {
       case CMD_CREATE:
@@ -67,13 +79,19 @@ void * process_line(void* arg) {
         if (ems_create(event_id, num_rows, num_columns)) {
           fprintf(stderr, "Failed to create event\n");
         }
-        pthread_mutex_unlock(&input_lock);
+        if(pthread_mutex_unlock(&input_lock)) {
+          fprintf(stderr, "Lock Error\n"); 
+          exit(1);
+        }
 
         break;
 
       case CMD_RESERVE:
         num_coords = parse_reserve(jobs_fd, MAX_RESERVATION_SIZE, &event_id, xs, ys);
-        pthread_mutex_unlock(&input_lock);
+        if(pthread_mutex_unlock(&input_lock)) {
+          fprintf(stderr, "Lock Error\n"); 
+          exit(1);
+        }
 
         if (num_coords == 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
@@ -92,7 +110,10 @@ void * process_line(void* arg) {
           *returnValue = 0;
           return (void *)returnValue;
         }
-        pthread_mutex_unlock(&input_lock);
+        if(pthread_mutex_unlock(&input_lock)) {
+          fprintf(stderr, "Lock Error\n"); 
+          exit(1);
+        }
 
         if (ems_show(event_id, output_fd)) {
           fprintf(stderr, "Failed to show event\n");
@@ -101,7 +122,10 @@ void * process_line(void* arg) {
         break;
 
       case CMD_LIST_EVENTS:
-        pthread_mutex_unlock(&input_lock);
+        if(pthread_mutex_unlock(&input_lock)) {
+          fprintf(stderr, "Lock Error\n"); 
+          exit(1);
+        }
 
         if (ems_list_events(output_fd)) {
           fprintf(stderr, "Failed to list events\n");
@@ -127,16 +151,25 @@ void * process_line(void* arg) {
             }
           }
         }
-        pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    }
         break;
 
       case CMD_INVALID:
-        pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    };
         fprintf(stderr, "Invalid command. See HELP for usage\n");
         break;
 
       case CMD_HELP: {
-        pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    };
         char* commands =  "Available commands:\n"
                           "  CREATE <event_id> <num_rows> <num_columns>\n"
                           "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
@@ -152,17 +185,26 @@ void * process_line(void* arg) {
       case CMD_BARRIER:
         terminate_reading = 1;
         *returnValue = 1;
-        pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    };
         return (void *)returnValue;
 
       case CMD_EMPTY:
-        pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    };
         break;
 
       case EOC:
         terminate_reading = 1;
         *returnValue = 0;
-        pthread_mutex_unlock(&input_lock);
+      if(pthread_mutex_unlock(&input_lock)) {
+      fprintf(stderr, "Lock Error\n"); 
+      exit(1);
+    };
         return (void *)returnValue;
     }
   }
@@ -228,7 +270,10 @@ int init_globals(unsigned int max_thr, const char *dirpath, const char *filename
 
 void terminate_globals() {
   free(wait_times);
-  pthread_mutex_destroy(&input_lock);
+  if(pthread_mutex_destroy(&input_lock)) {
+    fprintf(stderr, "Lock Error\n"); 
+    exit(1);
+  }
 }
 
 int process_file(unsigned int max_thr) {

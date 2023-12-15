@@ -96,6 +96,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
   event->data = malloc(num_rows * num_cols * sizeof(unsigned int));
   event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_mutex_t));
   pthread_rwlock_init(&event->event_lock, NULL);
+  pthread_mutex_init(&event->reservation_lock, NULL);
 
   if (event->data == NULL) {
     fprintf(stderr, "Error allocating memory for event data\n");
@@ -200,7 +201,9 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
     }
   }
   if (can_reserve) {
+    pthread_mutex_lock(&event->reservation_lock);
     unsigned int reservation_id = ++event->reservations;
+    pthread_mutex_unlock(&event->reservation_lock);
     for (size_t j = 0; j < num_seats; j++) {
       size_t row = xs[j];
       size_t col = ys[j];

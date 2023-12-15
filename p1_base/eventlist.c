@@ -40,6 +40,7 @@ static void free_event(struct Event* event) {
   }
   free(event->seatlocks);
   pthread_rwlock_destroy(&event->event_lock);
+  pthread_mutex_destroy(&event->reservation_lock);
   free(event);
 }
 

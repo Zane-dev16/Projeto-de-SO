@@ -247,8 +247,8 @@ int ems_show(unsigned int event_id, int fd) {
       for (size_t j = 1; j <= event->cols; j++) {
           pthread_rwlock_rdlock(&event->seatlocks[seat_index(event, i, j)]);
           unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
-          pthread_rwlock_unlock(&event->seatlocks[seat_index(event, i, j)]);
           size_t len = (size_t)snprintf(buffer + buffer_position, max_seat_length + 1, "%u", *seat);
+          pthread_rwlock_unlock(&event->seatlocks[seat_index(event, i, j)]);
           buffer_position += len;
 
           // Add space unless it's the last column

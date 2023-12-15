@@ -121,16 +121,15 @@ void * process_line(void* arg) {
 
       case CMD_HELP: {
         pthread_mutex_unlock(&input_lock);
-        printf("Available commands:\n"
-            "  CREATE <event_id> <num_rows> <num_columns>\n"
-            "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
-            "  SHOW <event_id>\n"
-            "  LIST\n"
-            "  WAIT <delay_ms> [thread_id]\n"
-            "  BARRIER\n"
-            "  HELP\n"
-        );
-
+        char* commands =  "Available commands:\n"
+                          "  CREATE <event_id> <num_rows> <num_columns>\n"
+                          "  RESERVE <event_id> [(<x1>,<y1>) (<x2>,<y2>) ...]\n"
+                          "  SHOW <event_id>\n"
+                          "  LIST\n"
+                          "  WAIT <delay_ms> [thread_id]\n"
+                          "  BARRIER\n"
+                          "  HELP\n";
+        write(output_fd, commands, strlen(commands));
         break;
       }
 

@@ -27,7 +27,7 @@ void * process_line(void* arg) {
   int *returnValue = malloc(sizeof(int));
   if (returnValue == NULL) {
     fprintf(stderr, "Failed to allocate memory for return value");
-    exit(EXIT_FAILURE);
+    exit(1);
   }
   int thread_id = *(int*) arg;
   free(arg);
@@ -323,10 +323,10 @@ int main(int argc, char *argv[]) {
 
   if (pid == 0) {
     if (init_globals(max_thr, dirpath, dp->d_name)){
-      return 1;
+      exit(1);
     }
     if(process_file(max_thr)) {
-      return 1;
+      exit(1);
     }
     terminate_globals();
   }

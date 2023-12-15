@@ -9,7 +9,7 @@ struct EventList* create_list() {
   list->head = NULL;
   list->tail = NULL;
   if (pthread_rwlock_init(&list->list_lock, NULL)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   return list;
@@ -25,18 +25,18 @@ int append_to_list(struct EventList* list, struct Event* event) {
   new_node->next = NULL;
 
   if (pthread_rwlock_wrlock(&list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   if (list->head == NULL) {
     list->head = new_node;
     list->tail = new_node;
   } else {
-    list->tail->next = new_node; //
+    list->tail->next = new_node;
     list->tail = new_node;
   }
   if (pthread_rwlock_unlock(&list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 
@@ -49,13 +49,13 @@ static void free_event(struct Event* event) {
   free(event->data);
   for (size_t i = 0; i < event->rows * event->cols; i++) {
     if (pthread_rwlock_destroy(&event->seatlocks[i])) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
   }
   free(event->seatlocks);
   if (pthread_rwlock_destroy(&event->event_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   pthread_mutex_destroy(&event->reservation_lock);
@@ -74,7 +74,7 @@ void free_list(struct EventList* list) {
     free(temp);
   }
   if (pthread_rwlock_destroy(&list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 
@@ -85,7 +85,7 @@ struct Event* get_event(struct EventList* list, unsigned int event_id) {
   if (!list) return NULL;
 
   if (pthread_rwlock_rdlock(&list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   struct ListNode* current = list->head;
@@ -93,7 +93,7 @@ struct Event* get_event(struct EventList* list, unsigned int event_id) {
     struct Event* event = current->event;
     if (event->id == event_id) {
       if (pthread_rwlock_unlock(&list->list_lock)) {
-        fprintf(stderr, "Lock Error");
+        fprintf(stderr, "Lock Error\n");
         exit(1);
       }
       return event;
@@ -101,7 +101,7 @@ struct Event* get_event(struct EventList* list, unsigned int event_id) {
     current = current->next;//
   }
   if (pthread_rwlock_unlock(&list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 

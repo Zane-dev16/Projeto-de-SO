@@ -56,7 +56,7 @@ int ems_init(unsigned int delay_ms) {
     return 1;
   }
   if (pthread_mutex_init(&output_lock, NULL)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   event_list = create_list();
@@ -72,7 +72,7 @@ int ems_terminate() {
   }
   free_list(event_list);
   if (pthread_mutex_destroy(&output_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   return 0;
@@ -104,11 +104,11 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
   event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_rwlock_t));
 
   if (pthread_rwlock_init(&event->event_lock, NULL)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   if (pthread_mutex_init(&event->reservation_lock, NULL)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 
@@ -127,7 +127,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
   for (size_t i = 0; i < num_rows * num_cols; i++) {
     event->data[i] = 0;
     if (pthread_rwlock_init(&event->seatlocks[i], NULL)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
   }
@@ -209,12 +209,12 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       break;
     }
     if (pthread_rwlock_wrlock(&event->seatlocks[seat_index(event, xs[i], ys[i])])) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
     if (*get_seat_with_delay(event, seat_index(event, row, col)) != 0) {
       if (pthread_rwlock_unlock(&event->seatlocks[seat_index(event, xs[i], ys[i])])) {
-        fprintf(stderr, "Lock Error");
+        fprintf(stderr, "Lock Error\n");
         exit(1);
       }
       can_reserve = 0;
@@ -224,12 +224,12 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
   }
   if (can_reserve) {
     if (pthread_mutex_lock(&event->reservation_lock)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
     unsigned int reservation_id = ++event->reservations;
     if (pthread_mutex_unlock(&event->reservation_lock)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
     for (size_t j = 0; j < num_seats; j++) {
@@ -237,7 +237,7 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       size_t col = ys[j];
       *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
       if (pthread_rwlock_unlock(&event->seatlocks[seat_index(event, row, col)])) {
-        fprintf(stderr, "Lock Error");
+        fprintf(stderr, "Lock Error\n");
         exit(1);
       }
     }
@@ -248,7 +248,7 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       size_t row = xs[j];
       size_t col = ys[j];
       if (pthread_rwlock_unlock(&event->seatlocks[seat_index(event, row, col)])) {
-        fprintf(stderr, "Lock Error");
+        fprintf(stderr, "Lock Error\n");
         exit(1);
       }
     }
@@ -280,13 +280,13 @@ int ems_show(unsigned int event_id, int fd) {
   for (size_t i = 1; i <= event->rows; i++) {
       for (size_t j = 1; j <= event->cols; j++) {
           if (pthread_rwlock_rdlock(&event->seatlocks[seat_index(event, i, j)])) {
-            fprintf(stderr, "Lock Error");
+            fprintf(stderr, "Lock Error\n");
             exit(1);
           }
           unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
           size_t len = (size_t)snprintf(buffer + buffer_position, max_seat_length + 1, "%u", *seat);
           if (pthread_rwlock_unlock(&event->seatlocks[seat_index(event, i, j)])) {
-            fprintf(stderr, "Lock Error");
+            fprintf(stderr, "Lock Error\n");
             exit(1);
           }
           buffer_position += len;
@@ -303,12 +303,12 @@ int ems_show(unsigned int event_id, int fd) {
   }
 
   if (pthread_mutex_lock(&output_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   write(fd, buffer, buffer_position);
   if (pthread_mutex_unlock(&output_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 
@@ -324,38 +324,38 @@ int ems_list_events(int fd) {
   }
 
   if (pthread_rwlock_rdlock(&event_list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   if (event_list->head == NULL) {
     if (pthread_rwlock_unlock(&event_list->list_lock)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
 
     if (pthread_mutex_lock(&output_lock)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
     write(fd, "No events\n", strlen("No events\n"));
     if (pthread_mutex_unlock(&output_lock)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
     return 0;
   }
   if (pthread_rwlock_unlock(&event_list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 
   struct ListNode* current = event_list->head;
   if (pthread_mutex_lock(&output_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   if (pthread_rwlock_rdlock(&event_list->list_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
   while (current != NULL) {
@@ -367,11 +367,11 @@ int ems_list_events(int fd) {
     current = current->next;
   }
     if (pthread_rwlock_unlock(&event_list->list_lock)) {
-      fprintf(stderr, "Lock Error");
+      fprintf(stderr, "Lock Error\n");
       exit(1);
     }
   if (pthread_mutex_unlock(&output_lock)) {
-    fprintf(stderr, "Lock Error");
+    fprintf(stderr, "Lock Error\n");
     exit(1);
   }
 

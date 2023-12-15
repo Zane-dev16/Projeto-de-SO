@@ -94,7 +94,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
   event->cols = num_cols;
   event->reservations = 0;
   event->data = malloc(num_rows * num_cols * sizeof(unsigned int));
-  event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_mutex_t));
+  event->seatlocks = malloc (num_rows * num_cols * sizeof(pthread_rwlock_t));
   pthread_rwlock_init(&event->event_lock, NULL);
   pthread_mutex_init(&event->reservation_lock, NULL);
 
@@ -112,7 +112,7 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
 
   for (size_t i = 0; i < num_rows * num_cols; i++) {
     event->data[i] = 0;
-    pthread_mutex_init(&event->seatlocks[i], NULL);
+    pthread_rwlock_init(&event->seatlocks[i], NULL);
   }
 
   if (append_to_list(event_list, event) != 0) {
@@ -193,8 +193,9 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       fprintf(stderr, "Invalid seat\n");
       break;
     }
-    pthread_mutex_lock(&event->seatlocks[seat_index(event, xs[i], ys[i])]);
+    pthread_rwlock_wrlock(&event->seatlocks[seat_index(event, xs[i], ys[i])]);
     if (*get_seat_with_delay(event, seat_index(event, row, col)) != 0) {
+      pthread_rwlock_unlock(&event->seatlocks[seat_index(event, xs[i], ys[i])]);
       can_reserve = 0;
       fprintf(stderr, "Seat already reserved\n");
       break;
@@ -208,16 +209,16 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       size_t row = xs[j];
       size_t col = ys[j];
       *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
-      pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
+      pthread_rwlock_unlock(&event->seatlocks[seat_index(event, row, col)]);
     }
     pthread_rwlock_unlock(&event->event_lock);
     return 0;
   }
   else {
-    for (size_t j = 0; j <= i; j++) {
+    for (size_t j = 0; j < i; j++) {
       size_t row = xs[j];
       size_t col = ys[j];
-      pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
+      pthread_rwlock_unlock(&event->seatlocks[seat_index(event, row, col)]);
     }
     pthread_rwlock_unlock(&event->event_lock);
     return 1;

@@ -14,6 +14,7 @@
 #include "parser.h"
 
 #define MAX_PATH_LENGTH 256
+#define ERROR 5
 
 int jobs_fd;
 int output_fd;
@@ -24,6 +25,10 @@ pthread_mutex_t input_lock;
 void * process_line(void* arg) {
 
   int *returnValue = malloc(sizeof(int));
+  if (returnValue == NULL) {
+    fprintf(stderr, "Failed to allocate memory for return value");
+    exit(EXIT_FAILURE);
+  }
   int thread_id = *(int*) arg;
   free(arg);
   while (1) {
@@ -152,17 +157,25 @@ void * process_line(void* arg) {
   }
 }
 
-void openJobsFile(const char *dirpath, const char *filename) {
+int openJobsFile(const char *dirpath, const char *filename) {
     char file_path[MAX_PATH_LENGTH];
     snprintf(file_path, sizeof(file_path), "%s/%s", dirpath, filename);
 
     jobs_fd = open(file_path, O_RDONLY);
+    if (jobs_fd == -1) {
+      return 1;
+    }
+    return 0;
 }
 
-void openOutputFile(const char *dirpath, const char *filename) {
+int openOutputFile(const char *dirpath, const char *filename) {
     char output_file_path[MAX_PATH_LENGTH];
     snprintf(output_file_path, sizeof(output_file_path), "%s/%.*sout", dirpath, (int)(strlen(filename) - 4), filename);
     output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
+    if (output_fd == -1) {
+      return 1;
+    }
+    return 0;
 }
 
 int parseValue(unsigned int *value, const char *arg) {
@@ -181,11 +194,25 @@ int is_jobs_file(const char *filename) {
     return !(strlen(filename) >= 5 && strcmp(filename + strlen(filename) - 5, ".jobs") == 0);
 }
 
-void init_globals(unsigned int max_thr, const char *dirpath, const char *filename) {
-  pthread_mutex_init(&input_lock, NULL);
+int init_globals(unsigned int max_thr, const char *dirpath, const char *filename) {
+  if(pthread_mutex_init(&input_lock, NULL)) {
+    fprintf(stderr, "Mutex initialization failed\n");
+    return 1;
+  }
   wait_times = (int*)malloc((max_thr + 1) * sizeof(int));
-  openJobsFile(dirpath, filename);
-  openOutputFile(dirpath, filename);
+  if (wait_times == NULL) {
+    fprintf(stderr, "Failed to initialize wait_times\n");
+    return 1;
+  }
+  if (openJobsFile(dirpath, filename)) {
+    fprintf(stderr, "Failed to open jobs file\n");
+    return 1;
+  }
+  if (openOutputFile(dirpath, filename)) {
+    fprintf(stderr, "Failed to open output file\n");
+    return 1;
+  }
+  return 0;
 }
 
 void terminate_globals() {
@@ -201,6 +228,10 @@ int process_file(unsigned int max_thr) {
       barrier_found = 0;
       for (unsigned int i = 0; i < max_thr; i++) {
         unsigned int* thread_id = malloc(sizeof(int));
+        if (thread_id == NULL) {
+          fprintf(stderr, "Failed to allocate memory for thread_id");
+          return 1;
+        }
         *thread_id = i + 1;
         wait_times[*thread_id] = 0;
         if (pthread_create(&th[i], NULL, process_line, thread_id) != 0) {
@@ -291,7 +322,9 @@ int main(int argc, char *argv[]) {
   }
 
   if (pid == 0) {
-    init_globals(max_thr, dirpath, dp->d_name);
+    if (init_globals(max_thr, dirpath, dp->d_name)){
+      return 1;
+    }
     if(process_file(max_thr)) {
       return 1;
     }

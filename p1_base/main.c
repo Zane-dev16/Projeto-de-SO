@@ -16,7 +16,6 @@
 int fd;
 int output_fd;
 pthread_mutex_t input_lock;
-pthread_mutex_t output_lock;
 
 // global variable for barrier
 int terminate_reading;
@@ -42,7 +41,6 @@ void * process_line(void* arg) {
     }
     if (wait_times[thread_id]) {                  // sets wait_id to default again
       pthread_mutex_unlock(&input_lock);
-      // printf("waiting now... thread: %d\n", thread_id);
       ems_wait((unsigned int)wait_times[thread_id]);
       wait_times[thread_id] = 0;
       pthread_mutex_lock(&input_lock);
@@ -52,7 +50,6 @@ void * process_line(void* arg) {
       case CMD_CREATE:
         if (parse_create(fd, &event_id, &num_rows, &num_columns) != 0) {
           fprintf(stderr, "Invalid command. See HELP for usage\n");
-          // continue;
           *returnValue = 0;
           return (void *)returnValue;
         }
@@ -87,21 +84,18 @@ void * process_line(void* arg) {
         }
         pthread_mutex_unlock(&input_lock);
 
-        pthread_mutex_lock(&output_lock);
         if (ems_show(event_id, output_fd)) {
           fprintf(stderr, "Failed to show event\n");
         }
-        pthread_mutex_unlock(&output_lock);
 
         break;
 
       case CMD_LIST_EVENTS:
         pthread_mutex_unlock(&input_lock);
-        pthread_mutex_lock(&output_lock);
+
         if (ems_list_events(output_fd)) {
           fprintf(stderr, "Failed to list events\n");
         }
-        pthread_mutex_unlock(&output_lock);
 
         break;
 
@@ -258,9 +252,9 @@ int main(int argc, char *argv[]) {
     output_fd = open(output_file_path, O_CREAT | O_TRUNC | O_WRONLY, S_IRUSR | S_IWUSR);
 
     pthread_mutex_init(&input_lock, NULL);
-    pthread_mutex_init(&output_lock, NULL);
     pthread_t th[max_thr];
     wait_times = (int*)malloc((max_thr + 1) * sizeof(int));
+    
     int barrier_found = 1;
     while (barrier_found) {
       terminate_reading = 0;
@@ -288,9 +282,7 @@ int main(int argc, char *argv[]) {
     }
     free(wait_times);
     pthread_mutex_destroy(&input_lock);
-    pthread_mutex_destroy(&output_lock);
 
-    // while (!end_of_file) {}
   }
   else {
     // Waiting for all the child processes to finish

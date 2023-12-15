@@ -103,6 +103,12 @@ int ems_create(unsigned int event_id, size_t num_rows, size_t num_cols) {
     return 1;
   }
 
+  if (event->seatlocks == NULL) {
+    fprintf(stderr, "Error allocating memory for event data\n");
+    free(event);
+    return 1;
+  }
+
   for (size_t i = 0; i < num_rows * num_cols; i++) {
     event->data[i] = 0;
     pthread_mutex_init(&event->seatlocks[i], NULL);
@@ -199,7 +205,6 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
       size_t row = xs[j];
       size_t col = ys[j];
       *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
-      printf("%d\n", reservation_id);
       pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
     }
     pthread_rwlock_unlock(&event->event_lock);
@@ -230,7 +235,7 @@ int ems_show(unsigned int event_id, int fd) {
     return 1;
   }
   pthread_rwlock_wrlock(&event->event_lock);
-
+  pthread_mutex_lock(&output_lock);
   for (size_t i = 1; i <= event->rows; i++) {
     for (size_t j = 1; j <= event->cols; j++) {
       unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
@@ -242,9 +247,9 @@ int ems_show(unsigned int event_id, int fd) {
         write(fd, " ", strlen(" "));
       }
     }
-
     write(fd, "\n", strlen("\n"));
   }
+  pthread_mutex_unlock(&output_lock);
   pthread_rwlock_unlock(&event->event_lock);
 
   return 0;
@@ -257,11 +262,14 @@ int ems_list_events(int fd) {
   }
 
   if (event_list->head == NULL) {
+    pthread_mutex_lock(&output_lock);
     write(fd, "No events\n", strlen("No events\n"));
+    pthread_mutex_unlock(&output_lock);
     return 0;
   }
 
   struct ListNode* current = event_list->head;
+  pthread_mutex_lock(&output_lock);
   while (current != NULL) {
     write(fd, "Event: ", strlen("Event: "));
     char event_id_str[12];
@@ -270,6 +278,7 @@ int ems_list_events(int fd) {
     write(fd, "\n", strlen("\n"));
     current = current->next;
   }
+  pthread_mutex_unlock(&output_lock);
 
   return 0;
 }

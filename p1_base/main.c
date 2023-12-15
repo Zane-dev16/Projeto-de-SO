@@ -109,7 +109,7 @@ void * process_line(void* arg) {
         }
 
         if (delay > 0) {
-          printf("Waiting...%d\n", thread_id);
+          printf("Waiting...\n");
           if (thr_id != 0) {
             wait_times[thr_id] = (int)delay;
           }

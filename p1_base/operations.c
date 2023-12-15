@@ -196,20 +196,24 @@ int ems_reserve(unsigned int event_id, size_t num_seats, size_t* xs, size_t* ys)
   }
   if (can_reserve) {
     unsigned int reservation_id = ++event->reservations;
-    for (size_t j = 0; j < i; j++) {
+    for (size_t j = 0; j < num_seats; j++) {
       size_t row = xs[j];
       size_t col = ys[j];
       *get_seat_with_delay(event, seat_index(event, row, col)) = reservation_id;
       pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
     }
+    pthread_rwlock_unlock(&event->event_lock);
+    return 0;
   }
   else {
+    for (size_t j = 0; j <= i; j++) {
+      size_t row = xs[j];
+      size_t col = ys[j];
+      pthread_mutex_unlock(&event->seatlocks[seat_index(event, row, col)]);
+    }
     pthread_rwlock_unlock(&event->event_lock);
     return 1;
   }
-
-  pthread_rwlock_unlock(&event->event_lock);
-  return 0;
 }
 
 int ems_show(unsigned int event_id, int fd) {

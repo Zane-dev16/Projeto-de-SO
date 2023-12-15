@@ -2,12 +2,12 @@
 
 #include <stdlib.h>
 
-
 struct EventList* create_list() {
   struct EventList* list = (struct EventList*)malloc(sizeof(struct EventList));
   if (!list) return NULL;
   list->head = NULL;
   list->tail = NULL;
+  pthread_rwlock_init(&list->list_lock, NULL);
   return list;
 }
 
@@ -20,13 +20,15 @@ int append_to_list(struct EventList* list, struct Event* event) {
   new_node->event = event;
   new_node->next = NULL;
 
+  pthread_rwlock_wrlock(&list->list_lock);
   if (list->head == NULL) {
     list->head = new_node;
     list->tail = new_node;
   } else {
-    list->tail->next = new_node;
+    list->tail->next = new_node; //
     list->tail = new_node;
   }
+  pthread_rwlock_unlock(&list->list_lock);
 
   return 0;
 }
@@ -55,6 +57,7 @@ void free_list(struct EventList* list) {
     free_event(temp->event);
     free(temp);
   }
+  pthread_rwlock_destroy(&list->list_lock);
 
   free(list);
 }
@@ -63,13 +66,15 @@ struct Event* get_event(struct EventList* list, unsigned int event_id) {
   if (!list) return NULL;
 
   struct ListNode* current = list->head;
+  pthread_rwlock_rdlock(&list->list_lock);
   while (current) {
     struct Event* event = current->event;
     if (event->id == event_id) {
       return event;
     }
-    current = current->next;
+    current = current->next;//
   }
+  pthread_rwlock_unlock(&list->list_lock);
 
   return NULL;
 }

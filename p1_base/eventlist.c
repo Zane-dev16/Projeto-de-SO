@@ -65,8 +65,8 @@ void free_list(struct EventList* list) {
 struct Event* get_event(struct EventList* list, unsigned int event_id) {
   if (!list) return NULL;
 
-  struct ListNode* current = list->head;
   pthread_rwlock_rdlock(&list->list_lock);
+  struct ListNode* current = list->head;
   while (current) {
     struct Event* event = current->event;
     if (event->id == event_id) {

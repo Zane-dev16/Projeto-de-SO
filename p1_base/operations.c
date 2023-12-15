@@ -277,15 +277,20 @@ int ems_list_events(int fd) {
     return 1;
   }
 
+  pthread_rwlock_rdlock(&event_list->list_lock);
   if (event_list->head == NULL) {
+    pthread_rwlock_unlock(&event_list->list_lock);
+
     pthread_mutex_lock(&output_lock);
     write(fd, "No events\n", strlen("No events\n"));
     pthread_mutex_unlock(&output_lock);
     return 0;
   }
+  pthread_rwlock_unlock(&event_list->list_lock);
 
   struct ListNode* current = event_list->head;
   pthread_mutex_lock(&output_lock);
+  pthread_rwlock_rdlock(&event_list->list_lock);
   while (current != NULL) {
     write(fd, "Event: ", strlen("Event: "));
     char event_id_str[12];
@@ -294,6 +299,7 @@ int ems_list_events(int fd) {
     write(fd, "\n", strlen("\n"));
     current = current->next;
   }
+  pthread_rwlock_unlock(&event_list->list_lock);
   pthread_mutex_unlock(&output_lock);
 
   return 0;

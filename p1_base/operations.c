@@ -230,49 +230,43 @@ int ems_show(unsigned int event_id, int fd) {
 
   struct Event* event = get_event_with_delay(event_id);
 
-
   if (event == NULL) {
     fprintf(stderr, "Event not found\n");
     return 1;
   }
-  size_t max_seat_length = (size_t)snprintf(NULL, 0, "%u", UINT_MAX); // Maximum seatStr length
-  size_t buffer_size = (event->rows * event->cols * (max_seat_length + 1)) + event->rows; // +event->rows for newline characters
+  size_t max_seat_length = (size_t)snprintf(NULL, 0, "%u", UINT_MAX);
+  size_t buffer_size = (event->rows * event->cols * (max_seat_length + 1)) + event->rows;
   char *buffer = malloc(buffer_size);
 
   if (buffer == NULL) {
-      // Handle memory allocation failure
-      // Add error handling code here
-  } else {
-      size_t buffer_position = 0;
+    exit(1);
+  }
+  size_t buffer_position = 0;
 
-      for (size_t i = 1; i <= event->rows; i++) {
-          for (size_t j = 1; j <= event->cols; j++) {
-              pthread_rwlock_rdlock(&event->seatlocks[seat_index(event, i, j)]);
-              unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
-              pthread_rwlock_unlock(&event->seatlocks[seat_index(event, i, j)]);
-              size_t len = (size_t)snprintf(buffer + buffer_position, max_seat_length + 1, "%u", *seat);
-              buffer_position += len;
+  for (size_t i = 1; i <= event->rows; i++) {
+      for (size_t j = 1; j <= event->cols; j++) {
+          pthread_rwlock_rdlock(&event->seatlocks[seat_index(event, i, j)]);
+          unsigned int* seat = get_seat_with_delay(event, seat_index(event, i, j));
+          pthread_rwlock_unlock(&event->seatlocks[seat_index(event, i, j)]);
+          size_t len = (size_t)snprintf(buffer + buffer_position, max_seat_length + 1, "%u", *seat);
+          buffer_position += len;
 
-              // Add space unless it's the last column
-              if (j < event->cols) {
-                  buffer[buffer_position] = ' ';
-                  buffer_position++;
-              }
+          // Add space unless it's the last column
+          if (j < event->cols) {
+              buffer[buffer_position] = ' ';
+              buffer_position++;
           }
-          
-          // Add newline after each row
-          buffer[buffer_position] = '\n';
-          buffer_position++;
       }
 
-      // Write the entire buffer to fd
-      pthread_mutex_lock(&output_lock);
-      write(fd, buffer, buffer_position);
-      pthread_mutex_unlock(&output_lock); 
-
-      // Free allocated memory
-      free(buffer);
+      buffer[buffer_position] = '\n';
+      buffer_position++;
   }
+
+  pthread_mutex_lock(&output_lock);
+  write(fd, buffer, buffer_position);
+  pthread_mutex_unlock(&output_lock); 
+
+  free(buffer);
 
   return 0;
 }
